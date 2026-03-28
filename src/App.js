@@ -246,6 +246,24 @@ export default function App() {
     } catch (err) { showToast('新增員工失敗！', 'error'); }
   };
 
+  const handleEditUser = async (docId, updatedData) => {
+    // 檢查是否有跟其他人重複的帳號名稱 (排除自己)
+    if (users.some(u => u.username === updatedData.username && u.docId !== docId)) {
+      showToast('此帳號名稱已存在，請更換！', 'error');
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_users', docId), updatedData);
+      showToast(`成功更新員工資料：${updatedData.name}`, 'success');
+      // 如果管理者更新了自己的資料，同步更新 currentUser 狀態
+      if (currentUser.id === updatedData.id) {
+        setCurrentUser({ ...currentUser, ...updatedData });
+      }
+    } catch (err) {
+      showToast('更新員工資料失敗！', 'error');
+    }
+  };
+
   const handleUpdateUserIP = async (docId, newIP) => {
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_users', docId), { allowedIP: newIP });
@@ -327,7 +345,7 @@ export default function App() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {currentUser.role === 'admin' ? (
-          <AdminDashboard records={records} users={users} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} onUpdateUserIP={handleUpdateUserIP} view={adminView} setView={setAdminView} currentTime={currentTime} currentUser={currentUser} clientIp={clientIp} showToast={showToast} />
+          <AdminDashboard records={records} users={users} onAddUser={handleAddUser} onEditUser={handleEditUser} onDeleteUser={handleDeleteUser} onUpdateUserIP={handleUpdateUserIP} view={adminView} setView={setAdminView} currentTime={currentTime} currentUser={currentUser} clientIp={clientIp} showToast={showToast} />
         ) : (
           <EmployeeDashboard currentTime={currentTime} records={records.filter(r => r.userId === currentUser.id)} onPunch={handlePunch} clientIp={clientIp} />
         )}
@@ -488,7 +506,7 @@ function EmployeeDashboard({ currentTime, records, onPunch, clientIp }) {
   );
 }
 
-function AdminDashboard({ records, users, onAddUser, onDeleteUser, onUpdateUserIP, view, setView, currentTime, currentUser, clientIp, showToast }) {
+function AdminDashboard({ records, users, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, view, setView, currentTime, currentUser, clientIp, showToast }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex overflow-x-auto border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -499,7 +517,7 @@ function AdminDashboard({ records, users, onAddUser, onDeleteUser, onUpdateUserI
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-8 overflow-hidden">
         {view === 'records' && <AdminRecordsView records={records} users={users} showToast={showToast} />}
-        {view === 'users' && <AdminUsersView users={users} onAddUser={onAddUser} onDeleteUser={onDeleteUser} onUpdateUserIP={onUpdateUserIP} currentUser={currentUser} />}
+        {view === 'users' && <AdminUsersView users={users} onAddUser={onAddUser} onEditUser={onEditUser} onDeleteUser={onDeleteUser} onUpdateUserIP={onUpdateUserIP} currentUser={currentUser} />}
       </div>
     </div>
   );
@@ -594,9 +612,13 @@ function AdminRecordsView({ records, users, showToast }) {
   );
 }
 
-function AdminUsersView({ users, onAddUser, onDeleteUser, onUpdateUserIP, currentUser }) {
+function AdminUsersView({ users, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, currentUser }) {
   const [newUsername, setNewUsername] = useState(''); const [newPassword, setNewPassword] = useState(''); const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('employee'); const [newAllowedIP, setNewAllowedIP] = useState('');
   const [editingIpUserId, setEditingIpUserId] = useState(null); const [editIpValue, setEditIpValue] = useState(''); const [userToDelete, setUserToDelete] = useState(null);
+  
+  // 新增：編輯全功能資料的狀態管理
+  const [editingUser, setEditingUser] = useState(null);
+  const [editFormData, setEditFormData] = useState({ name: '', username: '', password: '', role: '', allowedIP: '', id: '' });
 
   const handleSubmit = (e) => {
     e.preventDefault(); if (!newUsername || !newPassword || !newName) return;
@@ -604,12 +626,65 @@ function AdminUsersView({ users, onAddUser, onDeleteUser, onUpdateUserIP, curren
     setNewUsername(''); setNewPassword(''); setNewName(''); setNewRole('employee'); setNewAllowedIP('');
   };
 
+  const startFullEdit = (user) => {
+    setEditingUser(user);
+    setEditFormData({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      password: user.password,
+      role: user.role,
+      allowedIP: user.allowedIP || ''
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editFormData.name || !editFormData.username || !editFormData.password) return;
+    onEditUser(editingUser.docId, editFormData);
+    setEditingUser(null);
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in relative">
+      
+      {/* 編輯員工資料 Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-md animate-fade-in-down shadow-2xl">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 flex items-center">
+              <Edit2 className="w-5 h-5 mr-2 text-blue-600" />編輯員工資料
+            </h3>
+            <div className="space-y-3">
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={editFormData.name} onChange={(e) => setEditFormData({...editFormData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">登入帳號</label><input type="text" required value={editFormData.username} onChange={(e) => setEditFormData({...editFormData, username: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">登入密碼</label><input type="text" required value={editFormData.password} onChange={(e) => setEditFormData({...editFormData, password: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={editFormData.allowedIP} onChange={(e) => setEditFormData({...editFormData, allowedIP: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" /></div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">權限</label>
+                <select value={editFormData.role} onChange={(e) => setEditFormData({...editFormData, role: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                  <option value="employee">一般員工</option>
+                  <option value="admin">管理員</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+              <button onClick={() => setEditingUser(null)} className="px-4 py-2 bg-gray-100 text-gray-600 font-bold rounded-lg text-sm hover:bg-gray-200 transition-colors">取消</button>
+              <button onClick={handleSaveEdit} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm hover:bg-blue-700 shadow-md transition-colors">儲存修改</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 刪除確認 Modal */}
       {userToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4">
-          <div className="bg-white rounded-xl p-5 w-full max-w-sm"><h3 className="text-lg font-bold text-red-600 mb-3">確認刪除帳號</h3><p className="mb-5 text-sm">確定要刪除「{userToDelete.name}」嗎？</p>
-            <div className="flex justify-end gap-2"><button onClick={() => setUserToDelete(null)} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">取消</button><button onClick={() => { onDeleteUser(userToDelete.docId, userToDelete.id, userToDelete.name); setUserToDelete(null); }} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm">確定</button></div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
+            <h3 className="text-lg font-bold text-red-600 mb-3 flex items-center"><AlertCircle className="w-5 h-5 mr-2" />確認刪除帳號</h3>
+            <p className="mb-5 text-sm text-gray-600">確定要刪除「<span className="font-bold text-gray-900">{userToDelete.name}</span>」嗎？此操作無法復原。</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setUserToDelete(null)} className="px-4 py-2 bg-gray-100 font-bold text-gray-600 hover:bg-gray-200 rounded-lg text-sm">取消</button>
+              <button onClick={() => { onDeleteUser(userToDelete.docId, userToDelete.id, userToDelete.name); setUserToDelete(null); }} className="px-4 py-2 bg-red-600 text-white font-bold hover:bg-red-700 rounded-lg text-sm shadow-md">確定刪除</button>
+            </div>
           </div>
         </div>
       )}
@@ -619,25 +694,43 @@ function AdminUsersView({ users, onAddUser, onDeleteUser, onUpdateUserIP, curren
         <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
           <ul className="divide-y divide-gray-100">
             {users.map(u => (
-              <li key={u.docId} className="p-4 flex flex-col sm:flex-row justify-between gap-3 hover:bg-gray-50">
-                <div className="flex items-center gap-3 w-full">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 ${u.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}>{u.name.charAt(0)}</div>
+              <li key={u.docId} className="p-4 flex flex-col sm:flex-row justify-between gap-3 hover:bg-gray-50 transition-colors">
+                <div className="flex items-start sm:items-center gap-3 w-full">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 mt-1 sm:mt-0 ${u.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}>{u.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-gray-900 text-base flex items-center gap-2"><span className="truncate">{u.name}</span>{u.id === currentUser.id && <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded-full shrink-0">您自己</span>}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 truncate">帳號: <span className="font-mono">{u.username}</span></div>
-                    <div className="text-[10px] sm:text-xs text-gray-500 mt-2 flex items-center bg-gray-100/80 px-2 py-1 rounded w-fit">
-                      <Globe className="w-3.5 h-3.5 mr-1" /> IP限制: 
+                    <div className="font-bold text-gray-900 text-base flex flex-wrap items-center gap-2">
+                      <span className="truncate">{u.name}</span>
+                      {u.id === currentUser.id && <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded-full shrink-0 text-gray-600">您自己</span>}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5 truncate">帳號: <span className="font-mono text-gray-700">{u.username}</span></div>
+                    
+                    <div className="text-[10px] sm:text-xs text-gray-500 mt-2 flex flex-col sm:flex-row sm:items-center bg-gray-100/80 px-2 py-1 rounded w-full sm:w-fit gap-2 sm:gap-0">
+                      <div className="flex items-center shrink-0">
+                        <Globe className="w-3.5 h-3.5 mr-1" /> IP限制: 
+                      </div>
                       {editingIpUserId === u.docId ? (
-                        <div className="flex ml-2"><input type="text" value={editIpValue} onChange={(e) => setEditIpValue(e.target.value)} className="border rounded px-1 text-xs w-24 sm:w-32" autoFocus /><button onClick={() => { onUpdateUserIP(u.docId, editIpValue.trim()); setEditingIpUserId(null); }} className="ml-1 bg-green-500 text-white px-2 rounded text-xs">儲存</button></div>
+                        <div className="flex sm:ml-2 w-full"><input type="text" value={editIpValue} onChange={(e) => setEditIpValue(e.target.value)} className="border rounded px-1 text-xs w-full sm:w-32 focus:outline-none focus:border-blue-500" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { onUpdateUserIP(u.docId, editIpValue.trim()); setEditingIpUserId(null); } if (e.key === 'Escape') setEditingIpUserId(null); }} /><button onClick={() => { onUpdateUserIP(u.docId, editIpValue.trim()); setEditingIpUserId(null); }} className="ml-1 bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded text-xs font-bold">儲存</button><button onClick={() => setEditingIpUserId(null)} className="ml-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-0.5 rounded text-xs font-bold">取消</button></div>
                       ) : (
-                        <div className="flex items-center ml-1">{u.allowedIP ? <span className="text-blue-600 font-mono font-bold truncate max-w-[100px]">{u.allowedIP}</span> : <span className="text-gray-400">無</span>}<button onClick={() => { setEditingIpUserId(u.docId); setEditIpValue(u.allowedIP || ''); }} className="ml-2 text-blue-500"><Edit2 className="w-3 h-3" /></button></div>
+                        <div className="flex items-center ml-1 sm:ml-2">
+                          {u.allowedIP ? <span className="text-blue-600 font-mono font-bold truncate max-w-[120px] sm:max-w-[150px]">{u.allowedIP}</span> : <span className="text-gray-400">無限制</span>}
+                          <button onClick={() => { setEditingIpUserId(u.docId); setEditIpValue(u.allowedIP || ''); }} className="ml-2 text-blue-500 hover:text-blue-700 p-0.5" title="快速修改 IP"><Edit2 className="w-3 h-3" /></button>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-end gap-3 pt-2 sm:pt-0">
-                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{u.role === 'admin' ? '管理員' : '一般員工'}</span>
-                  <button onClick={() => setUserToDelete({ docId: u.docId, id: u.id, name: u.name })} disabled={u.id === currentUser.id} className={`p-1.5 rounded-lg ${u.id === currentUser.id ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600'}`}><Trash2 className="w-4 h-4" /></button>
+                
+                <div className="flex items-center justify-end gap-2 pt-2 sm:pt-0 mt-2 sm:mt-0 border-t border-gray-100 sm:border-0 w-full sm:w-auto">
+                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold mr-2 ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{u.role === 'admin' ? '管理員' : '一般員工'}</span>
+                  
+                  {/* 新增的編輯按鈕 */}
+                  <button onClick={() => startFullEdit(u)} className="p-1.5 sm:p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="編輯帳號資料">
+                    <Edit2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  
+                  <button onClick={() => setUserToDelete({ docId: u.docId, id: u.id, name: u.name })} disabled={u.id === currentUser.id} className={`p-1.5 sm:p-2 rounded-lg transition-colors ${u.id === currentUser.id ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`} title="刪除帳號">
+                    <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
                 </div>
               </li>
             ))}
@@ -646,15 +739,15 @@ function AdminUsersView({ users, onAddUser, onDeleteUser, onUpdateUserIP, curren
       </div>
 
       <div className="w-full">
-        <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 lg:sticky lg:top-24">
+        <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 lg:sticky lg:top-24 shadow-sm">
           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><UserPlus className="w-5 h-5 mr-2 text-blue-600" />新增帳號</h2>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">帳號</label><input type="text" required value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">密碼</label><input type="text" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={newAllowedIP} onChange={(e) => setNewAllowedIP(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-xs font-mono" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">權限</label><select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"><option value="employee">一般員工</option><option value="admin">管理員</option></select></div>
-            <button type="submit" className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex justify-center text-sm"><UserPlus className="w-4 h-4 mr-2" />建立帳號</button>
+            <div><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+            <div><label className="block text-xs font-bold text-gray-700 mb-1">帳號</label><input type="text" required value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+            <div><label className="block text-xs font-bold text-gray-700 mb-1">密碼</label><input type="text" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+            <div><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={newAllowedIP} onChange={(e) => setNewAllowedIP(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" /></div>
+            <div><label className="block text-xs font-bold text-gray-700 mb-1">權限</label><select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"><option value="employee">一般員工</option><option value="admin">管理員</option></select></div>
+            <button type="submit" className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex justify-center text-sm shadow-md active:scale-95 transition-all"><UserPlus className="w-4 h-4 mr-2" />建立帳號</button>
           </form>
         </div>
       </div>
