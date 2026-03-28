@@ -247,7 +247,6 @@ export default function App() {
   };
 
   const handleEditUser = async (docId, updatedData) => {
-    // 檢查是否有跟其他人重複的帳號名稱 (排除自己)
     if (users.some(u => u.username === updatedData.username && u.docId !== docId)) {
       showToast('此帳號名稱已存在，請更換！', 'error');
       return;
@@ -255,7 +254,6 @@ export default function App() {
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_users', docId), updatedData);
       showToast(`成功更新員工資料：${updatedData.name}`, 'success');
-      // 如果管理者更新了自己的資料，同步更新 currentUser 狀態
       if (currentUser.id === updatedData.id) {
         setCurrentUser({ ...currentUser, ...updatedData });
       }
@@ -277,6 +275,25 @@ export default function App() {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_users', docId));
       showToast(`已刪除員工：${userName}`, 'success');
     } catch (err) { showToast('刪除員工失敗！', 'error'); }
+  };
+
+  // --- 新增：編輯/刪除打卡紀錄功能 ---
+  const handleEditRecord = async (docId, newTimestamp) => {
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_records', docId), { timestamp: newTimestamp });
+      showToast('打卡時間更新成功！', 'success');
+    } catch (err) {
+      showToast('更新打卡時間失敗！', 'error');
+    }
+  };
+
+  const handleDeleteRecord = async (docId) => {
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_records', docId));
+      showToast('已刪除該筆打卡紀錄', 'success');
+    } catch (err) {
+      showToast('刪除打卡紀錄失敗！', 'error');
+    }
   };
 
   if (!isFirebaseInitialized) {
@@ -345,7 +362,22 @@ export default function App() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {currentUser.role === 'admin' ? (
-          <AdminDashboard records={records} users={users} onAddUser={handleAddUser} onEditUser={handleEditUser} onDeleteUser={handleDeleteUser} onUpdateUserIP={handleUpdateUserIP} view={adminView} setView={setAdminView} currentTime={currentTime} currentUser={currentUser} clientIp={clientIp} showToast={showToast} />
+          <AdminDashboard 
+            records={records} 
+            users={users} 
+            onAddUser={handleAddUser} 
+            onEditUser={handleEditUser} 
+            onDeleteUser={handleDeleteUser} 
+            onUpdateUserIP={handleUpdateUserIP} 
+            onEditRecord={handleEditRecord} 
+            onDeleteRecord={handleDeleteRecord} // 傳遞刪除紀錄功能
+            view={adminView} 
+            setView={setAdminView} 
+            currentTime={currentTime} 
+            currentUser={currentUser} 
+            clientIp={clientIp} 
+            showToast={showToast} 
+          />
         ) : (
           <EmployeeDashboard currentTime={currentTime} records={records.filter(r => r.userId === currentUser.id)} onPunch={handlePunch} clientIp={clientIp} />
         )}
@@ -506,7 +538,7 @@ function EmployeeDashboard({ currentTime, records, onPunch, clientIp }) {
   );
 }
 
-function AdminDashboard({ records, users, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, view, setView, currentTime, currentUser, clientIp, showToast }) {
+function AdminDashboard({ records, users, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, onEditRecord, onDeleteRecord, view, setView, currentTime, currentUser, clientIp, showToast }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex overflow-x-auto border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -516,19 +548,26 @@ function AdminDashboard({ records, users, onAddUser, onEditUser, onDeleteUser, o
         </div>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-8 overflow-hidden">
-        {view === 'records' && <AdminRecordsView records={records} users={users} showToast={showToast} />}
+        {view === 'records' && <AdminRecordsView records={records} users={users} showToast={showToast} onEditRecord={onEditRecord} onDeleteRecord={onDeleteRecord} />}
         {view === 'users' && <AdminUsersView users={users} onAddUser={onAddUser} onEditUser={onEditUser} onDeleteUser={onDeleteUser} onUpdateUserIP={onUpdateUserIP} currentUser={currentUser} />}
       </div>
     </div>
   );
 }
 
-function AdminRecordsView({ records, users, showToast }) {
+function AdminRecordsView({ records, users, showToast, onEditRecord, onDeleteRecord }) {
   const getTodayString = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const [startDate, setStartDate] = useState(getTodayString());
   const [endDate, setEndDate] = useState(getTodayString());
   const [filterUserId, setFilterUserId] = useState('');
   const [filterType, setFilterType] = useState('');
+  
+  // 狀態管理：編輯打卡紀錄
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editDateTime, setEditDateTime] = useState('');
+
+  // 新增：狀態管理：刪除打卡紀錄
+  const [recordToDelete, setRecordToDelete] = useState(null);
 
   const filteredRecords = records.filter(record => {
     let matchDate = true, matchUser = true, matchType = true;
@@ -556,8 +595,86 @@ function AdminRecordsView({ records, users, showToast }) {
     } catch (e) { showToast('匯出失敗', 'error'); }
   };
 
+  const startEditRecord = (record) => {
+    setEditingRecord(record);
+    const d = new Date(record.timestamp);
+    // 轉換為 YYYY-MM-DDThh:mm 格式讓 datetime-local input 吃得懂
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    setEditDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+  };
+
+  const handleSaveRecord = () => {
+    if (!editDateTime) return;
+    const newIsoString = new Date(editDateTime).toISOString();
+    onEditRecord(editingRecord.docId, newIsoString);
+    setEditingRecord(null);
+  };
+
   return (
     <div className="animate-fade-in w-full">
+      
+      {/* 編輯打卡時間 Modal */}
+      {editingRecord && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 flex items-center">
+              <Edit2 className="w-5 h-5 mr-2 text-blue-600" />修改打卡時間
+            </h3>
+            <div className="mb-4 space-y-2">
+              <p className="text-sm text-gray-600">員工：<span className="font-bold text-gray-900">{editingRecord.userName}</span></p>
+              <p className="text-sm text-gray-600">類型：
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${editingRecord.type === 'in' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {editingRecord.type === 'in' ? '上班' : '下班'}
+                </span>
+              </p>
+              <div className="pt-2">
+                <label className="block text-xs font-bold text-gray-700 mb-1">新的打卡時間</label>
+                <input 
+                  type="datetime-local" 
+                  value={editDateTime} 
+                  onChange={(e) => setEditDateTime(e.target.value)} 
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" 
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+              <button onClick={() => setEditingRecord(null)} className="px-4 py-2 bg-gray-100 text-gray-600 font-bold rounded-lg text-sm hover:bg-gray-200 transition-colors">取消</button>
+              <button onClick={handleSaveRecord} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm hover:bg-blue-700 shadow-md transition-colors">儲存修改</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新增：刪除打卡紀錄確認 Modal */}
+      {recordToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
+            <h3 className="text-lg font-bold text-red-600 mb-3 flex items-center"><AlertCircle className="w-5 h-5 mr-2" />確認刪除紀錄</h3>
+            <div className="mb-5 space-y-2">
+              <p className="text-sm text-gray-600">確定要刪除這筆打卡紀錄嗎？</p>
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mt-2">
+                <p className="text-sm font-bold text-gray-800">{recordToDelete.userName}</p>
+                <p className="text-xs text-gray-500 mt-1 flex items-center">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold mr-2 ${recordToDelete.type === 'in' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {recordToDelete.type === 'in' ? '上班' : '下班'}
+                  </span>
+                  {new Date(recordToDelete.timestamp).toLocaleString('zh-TW')}
+                </p>
+              </div>
+              <p className="text-xs text-red-500 font-bold mt-2">※ 此操作將從雲端資料庫永久移除，無法復原！</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRecordToDelete(null)} className="px-4 py-2 bg-gray-100 font-bold text-gray-600 hover:bg-gray-200 rounded-lg text-sm">取消</button>
+              <button onClick={() => { onDeleteRecord(recordToDelete.docId); setRecordToDelete(null); }} className="px-4 py-2 bg-red-600 text-white font-bold hover:bg-red-700 rounded-lg text-sm shadow-md">確定刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between mb-4 sm:mb-6 gap-3">
         <h2 className="text-xl font-bold text-gray-800 flex items-center"><List className="w-5 h-5 mr-2 text-blue-600" />明細查詢</h2>
         <button onClick={handleExportCSV} disabled={filteredRecords.length === 0} className={`px-4 py-2.5 rounded-lg font-bold flex items-center ${filteredRecords.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}><Download className="w-4 h-4 mr-2" />匯出 CSV</button>
@@ -594,7 +711,15 @@ function AdminRecordsView({ records, users, showToast }) {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 w-full">
           <table className="w-full text-left bg-white min-w-[500px]">
-            <thead><tr className="bg-gray-100/80 text-gray-700 text-sm border-b"><th className="p-3 font-bold">員工</th><th className="p-3 font-bold">類型</th><th className="p-3 font-bold">日期</th><th className="p-3 font-bold">時間</th></tr></thead>
+            <thead>
+              <tr className="bg-gray-100/80 text-gray-700 text-sm border-b">
+                <th className="p-3 font-bold">員工</th>
+                <th className="p-3 font-bold">類型</th>
+                <th className="p-3 font-bold">日期</th>
+                <th className="p-3 font-bold">時間</th>
+                <th className="p-3 font-bold text-center w-24">操作</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredRecords.map(r => (
                 <tr key={r.docId} className="hover:bg-blue-50/50">
@@ -602,6 +727,22 @@ function AdminRecordsView({ records, users, showToast }) {
                   <td className="p-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${r.type === 'in' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>{r.type === 'in' ? '上班' : '下班'}</span></td>
                   <td className="p-3 text-gray-700">{new Date(r.timestamp).toLocaleDateString('zh-TW')}</td>
                   <td className="p-3 text-gray-700 font-mono">{new Date(r.timestamp).toLocaleTimeString('zh-TW')}</td>
+                  <td className="p-3 text-center whitespace-nowrap">
+                    <button 
+                      onClick={() => startEditRecord(r)} 
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" 
+                      title="修改時間"
+                    >
+                      <Edit2 className="w-4 h-4 inline-block" />
+                    </button>
+                    <button 
+                      onClick={() => setRecordToDelete(r)} 
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors ml-1" 
+                      title="刪除紀錄"
+                    >
+                      <Trash2 className="w-4 h-4 inline-block" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
