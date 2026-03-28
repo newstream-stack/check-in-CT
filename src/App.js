@@ -693,7 +693,11 @@ function AdminRecordsView({ records, users, showToast, onEditRecord, onDeleteRec
         <div className="flex gap-3 flex-1 w-full">
           <div className="flex-1">
             <label className="block text-sm font-bold text-gray-700 mb-1.5">員工</label>
-            <select value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)} className="w-full px-2 py-2 border rounded-lg bg-white text-sm"><option value="">全部</option>{users.map(u => <option key={u.docId} value={u.id}>{u.name}</option>)}</select>
+            <select value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)} className="w-full px-2 py-2 border rounded-lg bg-white text-sm">
+              <option value="">全部</option>
+              {/* 過濾掉管理員，只顯示一般員工 */}
+              {users.filter(u => u.role !== 'admin').map(u => <option key={u.docId} value={u.id}>{u.name}</option>)}
+            </select>
           </div>
           <div className="flex-1">
             <label className="block text-sm font-bold text-gray-700 mb-1.5">類型</label>
