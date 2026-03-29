@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Clock, LogOut, UserPlus, Users, List, CheckCircle, 
-  LogIn, AlertCircle, Calendar, Download, Search, X, Trash2, History, Globe, Edit2, Sun, CalendarDays, ChevronLeft, ChevronRight, FileText, Mail, CheckSquare, XCircle, Send, Settings
+  LogIn, AlertCircle, Calendar, Download, Search, X, Trash2, History, Globe, Edit2, Sun, CalendarDays, ChevronLeft, ChevronRight, FileText, Mail, CheckSquare, XCircle, Send, Settings, Copy, Briefcase, Tags
 } from 'lucide-react';
 
 // ==========================================
@@ -155,9 +155,14 @@ export default function App() {
   const [holidays, setHolidays] = useState([]); 
   const [leaves, setLeaves] = useState([]); 
   const [overtimes, setOvertimes] = useState([]); 
-  const [systemName, setSystemName] = useState('戰地記憶的燈塔：金門莒光樓');
-  const [currentUser, setCurrentUser] = useState(null);
   
+  const [systemName, setSystemName] = useState('戰地記憶的燈塔：金門莒光樓');
+  const [workStartTime, setWorkStartTime] = useState('08:30');
+  const [workEndTime, setWorkEndTime] = useState('17:30');
+  const [departments, setDepartments] = useState([]);
+  const [jobTitles, setJobTitles] = useState([]);
+  
+  const [currentUser, setCurrentUser] = useState(null);
   const [toast, setToast] = useState(null);
   const [emailNotification, setEmailNotification] = useState(null); 
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -214,8 +219,10 @@ export default function App() {
     const unsubUsers = onSnapshot(usersRef, async (snapshot) => {
       if (snapshot.empty) {
         try {
-          await setDoc(doc(usersRef, 'admin_init'), { id: 'admin_init', username: 'admin', password: 'password', name: '系統管理員', role: 'admin', allowedIP: '', email: 'arok276@ct.org.tw', annualLeaveTotal: 14, hireDate: '2020-01-01', ignoreLate: false, ignoreIpRestriction: false });
-          await setDoc(doc(usersRef, 'employee_init'), { id: 'employee_init', username: 'employee', password: 'password', name: '測試員工小明', role: 'employee', allowedIP: '', email: 'arok276@gmail.com', annualLeaveTotal: 10, hireDate: '2023-05-10', ignoreLate: false, ignoreIpRestriction: false });
+          await setDoc(doc(usersRef, 'admin_init'), { id: 'admin_init', username: 'admin', password: 'password', name: '系統管理員', role: 'admin', department: '管理部', jobTitle: '資訊總監', allowedIP: '', email: 'admin@example.com', annualLeaveTotal: 14, hireDate: '2020-01-01', ignoreLate: false, ignoreIpRestriction: false });
+          await setDoc(doc(usersRef, 'boss_init'), { id: 'boss_init', username: 'boss', password: 'password', name: '老闆', role: 'boss', department: '經營層', jobTitle: '負責人', allowedIP: '', email: 'boss@example.com', annualLeaveTotal: 14, hireDate: '2010-01-01', ignoreLate: true, ignoreIpRestriction: true });
+          await setDoc(doc(usersRef, 'manager_init'), { id: 'manager_init', username: 'manager', password: 'password', name: '主管老陳', role: 'manager', department: '業務部', jobTitle: '業務部經理', allowedIP: '', email: 'manager@example.com', annualLeaveTotal: 14, hireDate: '2018-05-01', ignoreLate: false, ignoreIpRestriction: false });
+          await setDoc(doc(usersRef, 'employee_init'), { id: 'employee_init', username: 'employee', password: 'password', name: '測試員工小明', role: 'employee', department: '業務部', jobTitle: '業務專員', allowedIP: '', email: 'arok276@gmail.com', annualLeaveTotal: 10, hireDate: '2023-05-10', ignoreLate: false, ignoreIpRestriction: false });
         } catch (err) { console.error("寫入預設帳號失敗", err); } finally { setIsDataLoaded(true); }
       } else {
         setUsers(snapshot.docs.map(d => ({ ...d.data(), docId: d.id })));
@@ -247,10 +254,23 @@ export default function App() {
 
     const unsubSettings = onSnapshot(settingsRef, (snapshot) => {
       if (snapshot.empty) {
-        setDoc(doc(settingsRef, 'config'), { systemName: '戰地記憶的燈塔：金門莒光樓' }).catch(err => console.log(err));
+        setDoc(doc(settingsRef, 'config'), { 
+          systemName: '戰地記憶的燈塔：金門莒光樓', 
+          workStartTime: '08:30', 
+          workEndTime: '17:30',
+          departments: ['管理部', '業務部', '經營層'],
+          jobTitles: ['負責人', '資訊總監', '業務部經理', '業務專員', '一般職員']
+        }).catch(err => console.log(err));
       } else {
         const configDoc = snapshot.docs.find(d => d.id === 'config');
-        if (configDoc && configDoc.data().systemName) setSystemName(configDoc.data().systemName);
+        if (configDoc) {
+          const data = configDoc.data();
+          if (data.systemName) setSystemName(data.systemName);
+          if (data.workStartTime) setWorkStartTime(data.workStartTime);
+          if (data.workEndTime) setWorkEndTime(data.workEndTime);
+          if (data.departments) setDepartments(data.departments);
+          if (data.jobTitles) setJobTitles(data.jobTitles);
+        }
       }
     });
 
@@ -261,11 +281,8 @@ export default function App() {
   
   // 實作真實 Email 寄信與系統內部提示功能
   const sendMockEmail = (toEmail, subject, body) => {
-    // 1. 顯示系統內部的提醒
     setEmailNotification({ to: toEmail, subject, body });
     setTimeout(() => setEmailNotification(null), 6000); 
-    
-    // 2. 觸發作業系統預設的 Email 軟體 (如 Outlook, Apple Mail)
     try {
       const mailtoLink = `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       const a = document.createElement('a');
@@ -274,9 +291,7 @@ export default function App() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } catch (e) {
-      console.warn("無法啟動外部郵件軟體:", e);
-    }
+    } catch (e) { console.warn("無法啟動外部郵件軟體:", e); }
   };
 
   const handleLogin = (username, password, rememberMe) => {
@@ -286,7 +301,7 @@ export default function App() {
         showToast(`登入失敗！IP不在允許清單中。`, 'error'); return; 
       }
       setCurrentUser(user);
-      if (user.role === 'admin') setAdminView('records');
+      if (['admin', 'boss', 'manager'].includes(user.role)) setAdminView('records');
       try { if (rememberMe) localStorage.setItem('punchSystemCredentials', JSON.stringify({ username, password })); else localStorage.removeItem('punchSystemCredentials'); } catch (error) {}
       showToast(`歡迎回來，${user.name}！`, 'success');
     } else { showToast('帳號或密碼錯誤！', 'error'); }
@@ -313,14 +328,12 @@ export default function App() {
     
     const hoursNum = Number(leaveHours) || 8;
 
-    // 年假餘額計算
     if (leaveType === '年假') {
       const usedAnnualHours = leaves.filter(l => l.userId === currentUser.id && l.leaveType === '年假' && l.status !== 'rejected').reduce((sum, l) => sum + (Number(l.hours) || 8), 0);
       const remainingAnnualHours = ((currentUser.annualLeaveTotal || 0) * 8) - usedAnnualHours;
       if (hoursNum > remainingAnnualHours) { showToast(`年假餘額不足！(僅剩 ${remainingAnnualHours / 8} 天)`, 'error'); return; }
     }
 
-    // 補休餘額計算
     if (leaveType === '補休') {
       const earnedComp = overtimes.filter(o => o.userId === currentUser.id && o.status === 'approved').reduce((sum, o) => sum + Number(o.hours), 0);
       const usedComp = leaves.filter(l => l.userId === currentUser.id && l.leaveType === '補休' && l.status !== 'rejected').reduce((sum, l) => sum + (Number(l.hours) || 8), 0);
@@ -331,8 +344,15 @@ export default function App() {
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'punch_leaves'), { id: Date.now().toString(), userId: currentUser.id, userName: currentUser.name, date: dateStr, leaveType, hours: hoursNum, status: 'pending', timestamp: new Date().toISOString() });
       showToast(`已成功送出 ${leaveType} (${hoursNum}H) 申請`, 'success');
+      
+      // 尋找通知對象：若是員工有主管則找主管，否則找 admin
+      let notifyEmail = 'arok276@ct.org.tw';
+      const myManager = users.find(u => u.role === 'manager' && u.department === currentUser.department);
       const adminUser = users.find(u => u.role === 'admin');
-      sendMockEmail(adminUser?.email || 'arok276@ct.org.tw', `[系統通知] 員工 ${currentUser.name} 申請 ${leaveType}`, `管理者 您好：\n\n員工 ${currentUser.name} 已提出請假申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 假別：${leaveType}\n▶ 時數：${hoursNum} 小時\n\n煩請登入系統進行簽核：\n${window.location.href}`);
+      if (myManager && myManager.email) notifyEmail = myManager.email;
+      else if (adminUser && adminUser.email) notifyEmail = adminUser.email;
+
+      sendMockEmail(notifyEmail, `[系統通知] 員工 ${currentUser.name} 申請 ${leaveType}`, `長官 您好：\n\n員工 ${currentUser.name} 已提出請假申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 假別：${leaveType}\n▶ 時數：${hoursNum} 小時\n\n煩請登入系統進行簽核：\n${window.location.href}`);
     } catch (err) { showToast('請假申請失敗！', 'error'); }
   };
 
@@ -344,8 +364,14 @@ export default function App() {
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'punch_overtimes'), { id: Date.now().toString(), userId: currentUser.id, userName: currentUser.name, date: dateStr, hours: Number(hours), reason, status: 'pending', timestamp: new Date().toISOString() });
       showToast(`已成功送出加班申請`, 'success');
+      
+      let notifyEmail = 'arok276@ct.org.tw';
+      const myManager = users.find(u => u.role === 'manager' && u.department === currentUser.department);
       const adminUser = users.find(u => u.role === 'admin');
-      sendMockEmail(adminUser?.email || 'arok276@ct.org.tw', `[系統通知] 員工 ${currentUser.name} 申請加班`, `管理者 您好：\n\n員工 ${currentUser.name} 已提出加班申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 時數：${hours} 小時\n▶ 事由：${reason}\n\n煩請登入系統進行簽核：\n${window.location.href}`);
+      if (myManager && myManager.email) notifyEmail = myManager.email;
+      else if (adminUser && adminUser.email) notifyEmail = adminUser.email;
+
+      sendMockEmail(notifyEmail, `[系統通知] 員工 ${currentUser.name} 申請加班`, `長官 您好：\n\n員工 ${currentUser.name} 已提出加班申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 時數：${hours} 小時\n▶ 事由：${reason}\n\n煩請登入系統進行簽核：\n${window.location.href}`);
     } catch (err) { showToast('加班申請失敗！', 'error'); }
   };
 
@@ -354,7 +380,7 @@ export default function App() {
     catch (err) { showToast('取消申請失敗！', 'error'); }
   };
 
-  // --- 管理員簽核操作 ---
+  // --- 管理員/老闆/主管 簽核操作 ---
   const handleApproveForm = async (docId, isApproved, employeeId, dateStr, formType, formDetail) => {
     try {
       const newStatus = isApproved ? 'approved' : 'rejected';
@@ -364,7 +390,7 @@ export default function App() {
 
       const emp = users.find(u => u.id === employeeId);
       const typeText = formType === 'leave' ? `${formDetail}請假` : `加班 ${formDetail}`;
-      sendMockEmail(emp?.email || '未設定信箱', `[審核結果] 您的 ${typeText} 申請已被${isApproved ? '批准' : '駁回'}`, `${emp?.name || '員工'} 您好：\n\n您於 ${dateStr} ${getWeekdayStr(dateStr)} 申請的 ${typeText}，已被管理者 ${isApproved ? '批准 ✅' : '駁回 ❌'}。\n\n請登入系統查看：\n${window.location.href}`);
+      sendMockEmail(emp?.email || '未設定信箱', `[審核結果] 您的 ${typeText} 申請已被${isApproved ? '批准' : '駁回'}`, `${emp?.name || '員工'} 您好：\n\n您於 ${dateStr} ${getWeekdayStr(dateStr)} 申請的 ${typeText}，已被 ${currentUser.name} ${isApproved ? '批准 ✅' : '駁回 ❌'}。\n\n請登入系統查看：\n${window.location.href}`);
     } catch (err) { showToast('審核操作失敗', 'error'); }
   };
 
@@ -378,7 +404,7 @@ export default function App() {
   const handleAddHoliday = async (date, name) => { if (holidays.some(h => h.date === date)) { showToast('已設定過節日！', 'error'); return; } try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'punch_holidays'), { date, name, id: Date.now().toString() }); showToast('新增節日成功', 'success'); } catch (err) { showToast('新增失敗', 'error'); } };
   const handleDeleteHoliday = async (docId) => { try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_holidays', docId)); showToast('已移除節日', 'success'); } catch (err) { showToast('刪除失敗', 'error'); } };
   
-  // 🚀 自動匯入台灣國定假日 API (支援 404 防呆提示)
+  // 🚀 自動匯入台灣國定假日 API 
   const handleImportTaiwanHolidays = async (year) => {
     try {
       showToast(`正在抓取 ${year} 年人事總處行事曆...`, 'success');
@@ -393,45 +419,52 @@ export default function App() {
       data.forEach(h => {
         if (h.isHoliday) {
           const dateStr = `${h.date.substring(0,4)}-${h.date.substring(4,6)}-${h.date.substring(6,8)}`;
-          // 抓取真實的假日名稱，若無則使用 description
           const holidayName = h.name || h.description || '國定假日';
           
           if (holidayName.trim() !== '' && !holidays.some(exist => exist.date === dateStr) && !newHolidays.some(newH => newH.date === dateStr)) {
-             newHolidays.push({ 
-               date: dateStr, 
-               name: holidayName, 
-               id: Date.now().toString() + Math.random().toString(36).substr(2, 5) 
-             });
+             newHolidays.push({ date: dateStr, name: holidayName, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) });
           }
         }
       });
 
-      if (newHolidays.length === 0) {
-         showToast(`${year} 年的假日已全在系統中或無休假資料！`, 'success');
-         return;
-      }
+      if (newHolidays.length === 0) { showToast(`${year} 年的假日已全在系統中或無休假資料！`, 'success'); return; }
 
       const holidaysRef = collection(db, 'artifacts', appId, 'public', 'data', 'punch_holidays');
       await Promise.all(newHolidays.map(h => addDoc(holidaysRef, h)));
-      
       showToast(`成功匯入 ${newHolidays.length} 筆國定假日！`, 'success');
-    } catch (err) {
-      showToast(err.message || '自動匯入失敗，請確認網路連線', 'error');
-    }
+    } catch (err) { showToast(err.message || '自動匯入失敗，請確認網路連線', 'error'); }
   };
 
-  const handleUpdateSystemName = async (newName) => { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_settings', 'config'), { systemName: newName }, { merge: true }); showToast('系統名稱更新成功！', 'success'); } catch (err) { showToast('更新系統名稱失敗', 'error'); } };
+  const handleUpdateSettings = async (newSettings) => { 
+    try { 
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'punch_settings', 'config'), newSettings, { merge: true }); 
+      showToast('系統設定更新成功！', 'success'); 
+    } catch (err) { showToast('更新設定失敗', 'error'); } 
+  };
 
   if (!isFirebaseInitialized) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><AlertCircle className="w-16 h-16 text-red-500 animate-pulse" /></div>;
   if (!isDataLoaded) return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center"><Clock className="w-12 h-12 text-blue-600 animate-bounce mb-4" /><p className="text-gray-500">載入中...</p></div>;
   if (!currentUser) return <>{loadError && <div className="bg-red-50 text-red-600 p-3 text-center text-sm font-bold absolute w-full top-0 z-50">{loadError}</div>}<LoginScreen onLogin={handleLogin} toast={toast} clientIp={clientIp} systemName={systemName} /></>;
+
+  const getRoleDisplayName = (role) => {
+    if (role === 'admin') return '管理員';
+    if (role === 'boss') return '老闆';
+    if (role === 'manager') return '部門主管';
+    return '一般員工';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative overflow-hidden">
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-2 text-blue-600 flex-shrink-0"><Clock className="w-6 h-6 sm:w-7 sm:h-7" /><h1 className="font-bold text-lg sm:text-xl tracking-wide truncate hidden xs:block">{systemName}</h1></div>
-          <div className="flex items-center space-x-3 sm:space-x-4"><div className="text-right flex flex-col items-end"><span className="font-bold text-gray-900 text-sm sm:text-base">{currentUser.name}</span><span className="text-[10px] sm:text-xs bg-gray-100 px-2 py-0.5 rounded-full mt-0.5 text-gray-600 font-medium">{currentUser.role === 'admin' ? '管理員' : '一般員工'}</span></div><button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors flex-shrink-0"><LogOut className="w-5 h-5 sm:w-6 sm:h-6" /></button></div>
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            <div className="text-right flex flex-col items-end">
+               <span className="font-bold text-gray-900 text-sm sm:text-base">{currentUser.name}</span>
+               <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full mt-0.5 font-medium ${currentUser.role==='boss'?'bg-amber-100 text-amber-700':currentUser.role==='manager'?'bg-indigo-100 text-indigo-700':currentUser.role==='admin'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600'}`}>{getRoleDisplayName(currentUser.role)}</span>
+            </div>
+            <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors flex-shrink-0"><LogOut className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+          </div>
         </div>
       </header>
 
@@ -449,12 +482,13 @@ export default function App() {
       )}
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {currentUser.role === 'admin' ? (
-          <AdminDashboard 
+        {['admin', 'boss', 'manager'].includes(currentUser.role) ? (
+          <ManagementDashboard 
             records={records} users={users} holidays={holidays} leaves={leaves} overtimes={overtimes} systemName={systemName}
+            workStartTime={workStartTime} workEndTime={workEndTime} departments={departments} jobTitles={jobTitles}
             onAddUser={handleAddUser} onEditUser={handleEditUser} onDeleteUser={handleDeleteUser} onUpdateUserIP={handleUpdateUserIP} 
             onEditRecord={handleEditRecord} onDeleteRecord={handleDeleteRecord} onAddHoliday={handleAddHoliday} onDeleteHoliday={handleDeleteHoliday} 
-            onApproveForm={handleApproveForm} onDeleteForm={handleDeleteForm} onUpdateSystemName={handleUpdateSystemName} 
+            onApproveForm={handleApproveForm} onDeleteForm={handleDeleteForm} onUpdateSettings={handleUpdateSettings} 
             onImportTaiwanHolidays={handleImportTaiwanHolidays} view={adminView} setView={setAdminView} 
             currentTime={currentTime} currentUser={currentUser} clientIp={clientIp} showToast={showToast} 
           />
@@ -463,6 +497,7 @@ export default function App() {
             currentTime={currentTime} currentUser={currentUser} clientIp={clientIp}
             records={records.filter(r => r.userId === currentUser.id)} leaves={leaves.filter(l => l.userId === currentUser.id)} overtimes={overtimes.filter(o => o.userId === currentUser.id)}
             holidays={holidays} onPunch={handlePunch} onApplyLeave={handleApplyLeave} onApplyOvertime={handleApplyOvertime} onDeleteForm={handleDeleteForm}
+            workStartTime={workStartTime} workEndTime={workEndTime}
           />
         )}
       </main>
@@ -500,7 +535,7 @@ function LoginScreen({ onLogin, toast, clientIp, systemName = '戰地記憶的�
 // ==========================================
 // 員工介面
 // ==========================================
-function EmployeeDashboard({ currentTime, currentUser, records, leaves, overtimes, holidays, onPunch, onApplyLeave, onApplyOvertime, onDeleteForm, clientIp }) {
+function EmployeeDashboard({ currentTime, currentUser, records, leaves, overtimes, holidays, onPunch, onApplyLeave, onApplyOvertime, onDeleteForm, clientIp, workStartTime, workEndTime }) {
   const [activeTab, setActiveTab] = useState('today');
   const formatTime = (date) => date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
@@ -531,6 +566,53 @@ function EmployeeDashboard({ currentTime, currentUser, records, leaves, overtime
 
   const combinedForms = [...leaves.map(l=>({...l, category:'leave'})), ...overtimes.map(o=>({...o, category:'overtime'}))].sort((a,b)=>b.date.localeCompare(a.date));
 
+  // 📈 個人出勤統計計算
+  const approvedLeaves = leaves.filter(l => l.status === 'approved');
+  const totalLeaveHoursAll = approvedLeaves.reduce((sum, l) => sum + (Number(l.hours) || 8), 0);
+  const totalLeaveDaysDisp = Math.floor(totalLeaveHoursAll / 8);
+  const totalLeaveHoursDisp = totalLeaveHoursAll % 8;
+
+  let totalLateMins = 0;
+  let totalEarlyMins = 0;
+  const [startH, startM] = (workStartTime || '08:30').split(':').map(Number);
+  const [endH, endM] = (workEndTime || '17:30').split(':').map(Number);
+
+  const recordsByDate = {};
+  records.forEach(r => {
+    const d = new Date(r.timestamp);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (!recordsByDate[dateStr]) recordsByDate[dateStr] = { in: null, out: null };
+    if (r.type === 'in') {
+      if (!recordsByDate[dateStr].in || d < new Date(recordsByDate[dateStr].in.timestamp)) recordsByDate[dateStr].in = r;
+    } else {
+      if (!recordsByDate[dateStr].out || d > new Date(recordsByDate[dateStr].out.timestamp)) recordsByDate[dateStr].out = r;
+    }
+  });
+
+  Object.keys(recordsByDate).forEach(dateStr => {
+    const dayData = recordsByDate[dateStr];
+    const dateObj = new Date(dateStr);
+    const isOff = checkIsHoliday(dateObj, holidays).isOff;
+    const hasLeave = approvedLeaves.some(l => l.date === dateStr);
+
+    if (!isOff && !hasLeave) {
+      if (dayData.in) {
+        const d = new Date(dayData.in.timestamp);
+        const limit = new Date(d); limit.setHours(startH, startM, 0, 0);
+        if (d > limit && !currentUser.ignoreLate) {
+          totalLateMins += Math.floor((d - limit) / 60000);
+        }
+      }
+      if (dayData.out) {
+        const d = new Date(dayData.out.timestamp);
+        const limit = new Date(d); limit.setHours(endH, endM, 0, 0);
+        if (d < limit) {
+          totalEarlyMins += Math.floor((limit - d) / 60000);
+        }
+      }
+    }
+  });
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-x-auto flex flex-nowrap border-b hide-scrollbar">
@@ -560,28 +642,49 @@ function EmployeeDashboard({ currentTime, currentUser, records, leaves, overtime
       )}
 
       {activeTab === 'history' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
-          {records.length === 0 ? <div className="text-center py-16 text-gray-500"><History className="w-12 h-12 mx-auto text-gray-300 mb-3" /><p>尚無任何紀錄</p></div> : (
-            <div className="max-h-[500px] overflow-y-auto">
-              <ul className="divide-y divide-gray-100">
-                {records.map(record => {
-                  const d = new Date(record.timestamp);
-                  const isHoliday = checkIsHoliday(d, holidays).isOff;
-                  const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                  return (
-                    <li key={record.docId} className="px-5 py-4 flex justify-between hover:bg-gray-50">
-                      <div className="flex items-center">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold mr-3 ${record.type === 'in' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>{record.type === 'in' ? '上班' : '下班'}</span>
-                        <span className="text-gray-800 font-medium">{dateStr.replace(/-/g,'/')} {getWeekdayStr(dateStr)}</span>
-                        {isHoliday && <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">假日出勤</span>}
-                      </div>
-                      <span className="text-gray-500 font-mono">{d.toLocaleTimeString('zh-TW')}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+        <div className="space-y-4 animate-fade-in">
+          {/* 個人統計數據面板 */}
+          <div className="grid grid-cols-3 gap-3 sm:gap-4">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center">
+              <h4 className="text-xs font-bold text-purple-700 mb-1">累積已請假</h4>
+              <div className="text-xl sm:text-2xl font-bold text-gray-800">
+                {totalLeaveDaysDisp}<span className="text-xs font-normal text-gray-500 mx-1">天</span>
+                {totalLeaveHoursDisp}<span className="text-xs font-normal text-gray-500 ml-1">小時</span>
+              </div>
             </div>
-          )}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center">
+              <h4 className="text-xs font-bold text-red-600 mb-1">累積遲到</h4>
+              <div className="text-xl sm:text-2xl font-bold text-gray-800">{formatMins(totalLateMins)}</div>
+            </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center">
+              <h4 className="text-xs font-bold text-orange-600 mb-1">累積早退</h4>
+              <div className="text-xl sm:text-2xl font-bold text-gray-800">{formatMins(totalEarlyMins)}</div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            {records.length === 0 ? <div className="text-center py-16 text-gray-500"><History className="w-12 h-12 mx-auto text-gray-300 mb-3" /><p>尚無任何紀錄</p></div> : (
+              <div className="max-h-[500px] overflow-y-auto">
+                <ul className="divide-y divide-gray-100">
+                  {records.map(record => {
+                    const d = new Date(record.timestamp);
+                    const isHoliday = checkIsHoliday(d, holidays).isOff;
+                    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    return (
+                      <li key={record.docId} className="px-5 py-4 flex justify-between hover:bg-gray-50">
+                        <div className="flex items-center">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold mr-3 ${record.type === 'in' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>{record.type === 'in' ? '上班' : '下班'}</span>
+                          <span className="text-gray-800 font-medium">{dateStr.replace(/-/g,'/')} {getWeekdayStr(dateStr)}</span>
+                          {isHoliday && <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">假日出勤</span>}
+                        </div>
+                        <span className="text-gray-500 font-mono">{d.toLocaleTimeString('zh-TW')}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -664,20 +767,45 @@ function EmployeeDashboard({ currentTime, currentUser, records, leaves, overtime
 }
 
 // ==========================================
-// 管理員介面
+// 管理員/老闆/主管共用介面
 // ==========================================
-function AdminDashboard({ records, users, holidays, leaves, overtimes, systemName, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, onEditRecord, onDeleteRecord, onAddHoliday, onDeleteHoliday, onApproveForm, onDeleteForm, onUpdateSystemName, onImportTaiwanHolidays, view, setView, currentTime, currentUser, clientIp, showToast }) {
-  const pendingLeavesCount = leaves.filter(l => l.status === 'pending').length;
-  const pendingOvertimesCount = overtimes.filter(o => o.status === 'pending').length;
+function ManagementDashboard({ records, users, holidays, leaves, overtimes, systemName, workStartTime, workEndTime, departments, jobTitles, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, onEditRecord, onDeleteRecord, onAddHoliday, onDeleteHoliday, onApproveForm, onDeleteForm, onUpdateSettings, onImportTaiwanHolidays, view, setView, currentTime, currentUser, clientIp, showToast }) {
+  
+  // 權限判斷
+  const isGlobalAdmin = currentUser.role === 'admin' || currentUser.role === 'boss';
+  const isManager = currentUser.role === 'manager';
+  const isBoss = currentUser.role === 'boss';
+  
+  // 某些頁面主管或老闆不能修改 (唯讀)
+  const readOnlyGeneral = isBoss || isManager;
+  // 主管不能修改打卡紀錄，也不能刪除
+  const readOnlyRecords = isBoss || isManager;
+
+  // 如果是主管，只過濾出自己部門的資料；如果不是主管(如老闆/管理員)，則可以看到全部
+  const visibleUsers = isGlobalAdmin ? users : users.filter(u => u.department === currentUser.department);
+  const visibleUserIds = visibleUsers.map(u => u.id);
+  
+  const visibleRecords = isGlobalAdmin ? records : records.filter(r => visibleUserIds.includes(r.userId));
+  const visibleLeaves = isGlobalAdmin ? leaves : leaves.filter(l => visibleUserIds.includes(l.userId));
+  const visibleOvertimes = isGlobalAdmin ? overtimes : overtimes.filter(o => visibleUserIds.includes(o.userId));
+
+  const pendingLeavesCount = visibleLeaves.filter(l => l.status === 'pending').length;
+  const pendingOvertimesCount = visibleOvertimes.filter(o => o.status === 'pending').length;
   const totalPending = pendingLeavesCount + pendingOvertimesCount;
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex overflow-x-auto border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0 hide-scrollbar">
         <div className="flex space-x-1 sm:space-x-2 min-w-max pb-0.5">
-          <button onClick={() => setView('records')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'records' ? 'bg-white text-blue-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}><List className="w-4 h-4 mr-1.5" />全體紀錄</button>
-          <button onClick={() => setView('users')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'users' ? 'bg-white text-blue-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}><Users className="w-4 h-4 mr-1.5" />員工管理</button>
-          <button onClick={() => setView('holidays')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'holidays' ? 'bg-white text-amber-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}><CalendarDays className="w-4 h-4 mr-1.5" />紀念日及節日</button>
+          <button onClick={() => setView('records')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'records' ? 'bg-white text-blue-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}>
+            <List className="w-4 h-4 mr-1.5" />{isManager ? '部門紀錄' : '全體紀錄'}
+          </button>
+          <button onClick={() => setView('users')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'users' ? 'bg-white text-blue-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}>
+            <Users className="w-4 h-4 mr-1.5" />{isManager ? '部門名單' : '員工名單'}
+          </button>
+          <button onClick={() => setView('holidays')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'holidays' ? 'bg-white text-amber-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}>
+            <CalendarDays className="w-4 h-4 mr-1.5" />紀念日及節日
+          </button>
           <button onClick={() => setView('approvals')} className={`flex items-center px-4 py-3 font-bold text-sm rounded-t-xl transition-all ${view === 'approvals' ? 'bg-white text-purple-600 border-t border-l border-r border-gray-200 relative -mb-[1px]' : 'text-gray-500 hover:text-gray-800 hover:bg-white/60 border-transparent border-t border-l border-r'}`}>
             <Mail className="w-4 h-4 mr-1.5" />表單審核
             {totalPending > 0 && <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{totalPending}</span>}
@@ -688,34 +816,74 @@ function AdminDashboard({ records, users, holidays, leaves, overtimes, systemNam
         </div>
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 overflow-hidden">
-        {view === 'records' && <AdminRecordsView records={records} leaves={leaves} overtimes={overtimes} users={users} holidays={holidays} showToast={showToast} onEditRecord={onEditRecord} onDeleteRecord={onDeleteRecord} onDeleteForm={onDeleteForm} />}
-        {view === 'users' && <AdminUsersView users={users} leaves={leaves} overtimes={overtimes} onAddUser={onAddUser} onEditUser={onEditUser} onDeleteUser={onDeleteUser} onUpdateUserIP={onUpdateUserIP} currentUser={currentUser} />}
-        {view === 'holidays' && <AdminHolidaysView holidays={holidays} onAddHoliday={onAddHoliday} onDeleteHoliday={onDeleteHoliday} onImportTaiwanHolidays={onImportTaiwanHolidays} readOnly={false} />}
-        {view === 'approvals' && <AdminApprovalsView leaves={leaves} overtimes={overtimes} onApproveForm={onApproveForm} />}
-        {view === 'settings' && <AdminSettingsView systemName={systemName} onUpdateSystemName={onUpdateSystemName} />}
+        {view === 'records' && <AdminRecordsView records={visibleRecords} leaves={visibleLeaves} overtimes={visibleOvertimes} users={visibleUsers} holidays={holidays} workStartTime={workStartTime} workEndTime={workEndTime} showToast={showToast} onEditRecord={readOnlyRecords ? null : onEditRecord} onDeleteRecord={readOnlyRecords ? null : onDeleteRecord} onDeleteForm={readOnlyRecords ? null : onDeleteForm} readOnly={readOnlyRecords} isManager={isManager} />}
+        {view === 'users' && <AdminUsersView users={visibleUsers} leaves={visibleLeaves} overtimes={visibleOvertimes} onAddUser={onAddUser} onEditUser={onEditUser} onDeleteUser={onDeleteUser} onUpdateUserIP={onUpdateUserIP} currentUser={currentUser} departments={departments} jobTitles={jobTitles} readOnly={readOnlyGeneral} isManager={isManager} />}
+        {view === 'holidays' && <AdminHolidaysView holidays={holidays} onAddHoliday={onAddHoliday} onDeleteHoliday={onDeleteHoliday} onImportTaiwanHolidays={onImportTaiwanHolidays} readOnly={readOnlyGeneral} />}
+        {view === 'approvals' && <AdminApprovalsView leaves={visibleLeaves} overtimes={visibleOvertimes} onApproveForm={onApproveForm} isManager={isManager} />}
+        {view === 'settings' && <AdminSettingsView systemName={systemName} workStartTime={workStartTime} workEndTime={workEndTime} departments={departments} jobTitles={jobTitles} onUpdateSettings={onUpdateSettings} readOnly={readOnlyGeneral} />}
       </div>
     </div>
   );
 }
 
 // --- 系統設定介面 ---
-function AdminSettingsView({ systemName, onUpdateSystemName }) {
+function AdminSettingsView({ systemName, workStartTime, workEndTime, departments, jobTitles, onUpdateSettings, readOnly }) {
   const [tempName, setTempName] = useState(systemName);
+  const [tempStartTime, setTempStartTime] = useState(workStartTime);
+  const [tempEndTime, setTempEndTime] = useState(workEndTime);
   
+  const [tempDepartments, setTempDepartments] = useState(departments || []);
+  const [tempJobTitles, setTempJobTitles] = useState(jobTitles || []);
+  
+  const [newDeptInput, setNewDeptInput] = useState('');
+  const [newTitleInput, setNewTitleInput] = useState('');
+
   useEffect(() => {
     setTempName(systemName);
-  }, [systemName]);
+    setTempStartTime(workStartTime);
+    setTempEndTime(workEndTime);
+    setTempDepartments(departments || []);
+    setTempJobTitles(jobTitles || []);
+  }, [systemName, workStartTime, workEndTime, departments, jobTitles]);
+
+  const handleAddDept = (e) => {
+    e.preventDefault();
+    if (newDeptInput.trim() && !tempDepartments.includes(newDeptInput.trim())) {
+      setTempDepartments([...tempDepartments, newDeptInput.trim()]);
+      setNewDeptInput('');
+    }
+  };
+
+  const handleAddTitle = (e) => {
+    e.preventDefault();
+    if (newTitleInput.trim() && !tempJobTitles.includes(newTitleInput.trim())) {
+      setTempJobTitles([...tempJobTitles, newTitleInput.trim()]);
+      setNewTitleInput('');
+    }
+  };
+
+  const removeDept = (dept) => { setTempDepartments(tempDepartments.filter(d => d !== dept)); };
+  const removeTitle = (title) => { setTempJobTitles(tempJobTitles.filter(t => t !== title)); };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (tempName.trim()) onUpdateSystemName(tempName.trim());
+    if (readOnly) return;
+    if (tempName.trim()) {
+      onUpdateSettings({ 
+        systemName: tempName.trim(),
+        workStartTime: tempStartTime,
+        workEndTime: tempEndTime,
+        departments: tempDepartments,
+        jobTitles: tempJobTitles
+      });
+    }
   };
 
   return (
-    <div className="animate-fade-in w-full max-w-lg">
+    <div className="animate-fade-in w-full max-w-2xl">
       <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center"><Settings className="w-6 h-6 mr-2 text-gray-700" />系統一般設定</h2>
       <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">企業/系統名稱顯示</label>
             <input 
@@ -723,14 +891,94 @@ function AdminSettingsView({ systemName, onUpdateSystemName }) {
               required 
               value={tempName} 
               onChange={e => setTempName(e.target.value)} 
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" 
+              disabled={readOnly}
+              className={`w-full px-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 ${readOnly ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' : 'bg-white border-gray-300'}`} 
               placeholder="例如：王氏企業差勤系統"
             />
             <p className="text-xs text-gray-500 mt-2">此名稱將同步顯示於員工登入畫面及系統左上角標題。</p>
           </div>
-          <div className="pt-2 border-t border-gray-100 flex justify-end">
-            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg text-sm shadow-sm transition-all">儲存變更</button>
+          
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center"><Clock className="w-4 h-4 mr-1.5 text-blue-600" />上下班時間設定</h3>
+            <p className="text-xs text-gray-500 mb-4">設定標準的考勤時間，系統將依此時間自動判斷遲到與早退，並套用於全體紀錄與 Excel 月結算報表。</p>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-gray-700 mb-1">上班時間</label>
+                <input 
+                  type="time" 
+                  required 
+                  value={tempStartTime} 
+                  onChange={e => setTempStartTime(e.target.value)} 
+                  disabled={readOnly}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono ${readOnly ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`} 
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-gray-700 mb-1">下班時間</label>
+                <input 
+                  type="time" 
+                  required 
+                  value={tempEndTime} 
+                  onChange={e => setTempEndTime(e.target.value)} 
+                  disabled={readOnly}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono ${readOnly ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`} 
+                />
+              </div>
+            </div>
           </div>
+
+          <div className="bg-purple-50/50 p-4 rounded-lg border border-purple-100">
+            <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center"><Briefcase className="w-4 h-4 mr-1.5 text-purple-600" />部門與職位名稱管理</h3>
+            <p className="text-xs text-gray-500 mb-4">設定公司內部的部門與職位清單，以供「員工管理」中採用下拉式選單快速選擇。</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* 部門設定 */}
+              <div className="bg-white p-3 rounded border border-gray-200">
+                <label className="block text-xs font-bold text-purple-700 mb-2">部門名稱清單</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {tempDepartments.length === 0 && <span className="text-xs text-gray-400">目前尚無部門</span>}
+                  {tempDepartments.map(d => (
+                    <span key={d} className="inline-flex items-center bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">
+                      {d}
+                      {!readOnly && <button type="button" onClick={() => removeDept(d)} className="ml-1 hover:text-red-600"><X className="w-3 h-3" /></button>}
+                    </span>
+                  ))}
+                </div>
+                {!readOnly && (
+                  <div className="flex gap-2">
+                    <input type="text" value={newDeptInput} onChange={e => setNewDeptInput(e.target.value)} placeholder="新增部門..." className="flex-1 px-2 py-1.5 text-xs border rounded focus:ring-1 focus:ring-purple-500" />
+                    <button type="button" onClick={handleAddDept} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">加入</button>
+                  </div>
+                )}
+              </div>
+
+              {/* 職位設定 */}
+              <div className="bg-white p-3 rounded border border-gray-200">
+                <label className="block text-xs font-bold text-blue-700 mb-2">職位名稱清單</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {tempJobTitles.length === 0 && <span className="text-xs text-gray-400">目前尚無職位</span>}
+                  {tempJobTitles.map(t => (
+                    <span key={t} className="inline-flex items-center bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded">
+                      {t}
+                      {!readOnly && <button type="button" onClick={() => removeTitle(t)} className="ml-1 hover:text-red-600"><X className="w-3 h-3" /></button>}
+                    </span>
+                  ))}
+                </div>
+                {!readOnly && (
+                  <div className="flex gap-2">
+                    <input type="text" value={newTitleInput} onChange={e => setNewTitleInput(e.target.value)} placeholder="新增職位..." className="flex-1 px-2 py-1.5 text-xs border rounded focus:ring-1 focus:ring-blue-500" />
+                    <button type="button" onClick={handleAddTitle} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">加入</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {!readOnly && (
+            <div className="pt-2 border-t border-gray-100 flex justify-end">
+              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg text-sm shadow-sm transition-all active:scale-95">儲存全部設定</button>
+            </div>
+          )}
         </form>
       </div>
     </div>
@@ -738,14 +986,17 @@ function AdminSettingsView({ systemName, onUpdateSystemName }) {
 }
 
 // --- 表單審核介面 ---
-function AdminApprovalsView({ leaves, overtimes, onApproveForm }) {
+function AdminApprovalsView({ leaves, overtimes, onApproveForm, isManager }) {
   const pendingLeaves = leaves.filter(l => l.status === 'pending').sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
   const pendingOvertimes = overtimes.filter(o => o.status === 'pending').sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
 
   return (
     <div className="animate-fade-in w-full space-y-8">
       <div>
-        <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><FileText className="w-5 h-5 mr-2 text-purple-600" />待審核請假單 ({pendingLeaves.length})</h2>
+        <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+          <FileText className="w-5 h-5 mr-2 text-purple-600" />
+          待審核請假單 {isManager ? '(部門)' : ''} ({pendingLeaves.length})
+        </h2>
         {pendingLeaves.length === 0 ? ( <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl border border-dashed"><CheckSquare className="w-8 h-8 mx-auto text-green-300 mb-2" /><p className="text-sm">無待審核請假</p></div> ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              {pendingLeaves.map(l => (
@@ -769,7 +1020,10 @@ function AdminApprovalsView({ leaves, overtimes, onApproveForm }) {
       </div>
 
       <div>
-        <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><Clock className="w-5 h-5 mr-2 text-amber-600" />待審核加班單 ({pendingOvertimes.length})</h2>
+        <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+          <Clock className="w-5 h-5 mr-2 text-amber-600" />
+          待審核加班單 {isManager ? '(部門)' : ''} ({pendingOvertimes.length})
+        </h2>
         {pendingOvertimes.length === 0 ? ( <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl border border-dashed"><CheckSquare className="w-8 h-8 mx-auto text-green-300 mb-2" /><p className="text-sm">無待審核加班</p></div> ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              {pendingOvertimes.map(o => (
@@ -797,7 +1051,7 @@ function AdminApprovalsView({ leaves, overtimes, onApproveForm }) {
 }
 
 // --- 紀錄列表與匯出 (整合所有狀態，美化 Excel) ---
-function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToast, onEditRecord, onDeleteRecord, onDeleteForm }) {
+function AdminRecordsView({ records, leaves, overtimes, users, holidays, workStartTime, workEndTime, showToast, onEditRecord, onDeleteRecord, onDeleteForm, readOnly, isManager }) {
   const getTodayString = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const [startDate, setStartDate] = useState(getTodayString());
   const [endDate, setEndDate] = useState(getTodayString());
@@ -852,17 +1106,20 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
     const userObj = users.find(u => u.id === record.userId);
     const isIgnoreLate = userObj?.ignoreLate || false;
 
+    const [startH, startM] = (workStartTime || '08:30').split(':').map(Number);
+    const [endH, endM] = (workEndTime || '17:30').split(':').map(Number);
+
     if (record.type === 'in') {
-      const limit = new Date(d); limit.setHours(8, 30, 0, 0); 
+      const limit = new Date(d); limit.setHours(startH, startM, 0, 0); 
       if (d > limit && !isIgnoreLate) return { isAnomaly: true, text: `遲到 ${formatMins(Math.floor((d - limit) / 60000))}`, type: 'late' };
     } else {
-      const limit = new Date(d); limit.setHours(17, 30, 0, 0); 
+      const limit = new Date(d); limit.setHours(endH, endM, 0, 0); 
       if (d < limit) return { isAnomaly: true, text: `早退 ${formatMins(Math.floor((limit - d) / 60000))}`, type: 'early' };
     }
     return { isAnomaly: false, text: '正常', type: 'normal' };
   };
 
-  // 🚀 Excel 月結算報表 - 導入防護面板機制
+  // 🚀 Excel 專業版月結算報表
   const handleExportExcel = () => {
     if (!window.XLSX) { showToast('Excel 套件載入中，請稍候再試！', 'error'); return; }
     if (!exportMonth) { showToast('請選擇要匯出的月份', 'error'); return; }
@@ -873,18 +1130,19 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
       const monthNum = parseInt(exMonth, 10);
       const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
 
-      // 抓出當月所有的 events
+      const [startH, startM] = (workStartTime || '08:30').split(':').map(Number);
+      const [endH, endM] = (workEndTime || '17:30').split(':').map(Number);
+
       const monthEvents = combinedEvents.filter(e => {
          const d = e.eventCategory === 'punch' ? new Date(e.timestamp) : new Date(e.date);
          return d.getFullYear() === yearNum && (d.getMonth() + 1) === monthNum;
       });
 
-      // 建立統計表與明細表架構
-      const summaryRows = [['員工姓名', '應出勤天數(至今日)', '實際出勤天數', '總遲到(分)', '總早退(分)', '總請假(小時)', '總加班(小時)', '異常/缺卡次數']];
-      const detailRows = [['員工姓名', '日期', '星期', '上班時間', '下班時間', '遲到(分)', '早退(分)', '請假(假別)', '請假(小時)', '核准加班(小時)', '狀態分析']];
+      // Excel 新增部門與職稱欄位
+      const summaryRows = [['部門', '職稱', '員工姓名', '應出勤天數(至今日)', '實際出勤天數', '總遲到(分)', '總早退(分)', '總請假(小時)', '總加班(小時)', '異常/缺卡次數']];
+      const detailRows = [['部門', '職稱', '員工姓名', '日期', '星期', '上班時間', '下班時間', '遲到(分)', '早退(分)', '請假(假別)', '請假(小時)', '核准加班(小時)', '狀態分析']];
 
-      // 找出需要統計的員工 (包含當月有紀錄，或是非管理員的一般員工)
-      const activeUsers = users.filter(u => u.role !== 'admin' || monthEvents.some(e => e.userId === u.id));
+      const activeUsers = users.filter(u => (u.role !== 'admin' && u.role !== 'boss') || monthEvents.some(e => e.userId === u.id));
 
       const todayObj = new Date();
       todayObj.setHours(23, 59, 59, 999);
@@ -895,12 +1153,13 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
 
          const hireDateObj = user.hireDate ? new Date(user.hireDate) : new Date('2000-01-01');
          hireDateObj.setHours(0, 0, 0, 0);
+         
+         const dept = user.department || '未設定';
+         const title = user.jobTitle || '未設定';
 
          for (let day = 1; day <= daysInMonth; day++) {
             const dateObj = new Date(yearNum, monthNum - 1, day);
             const isHired = dateObj >= hireDateObj;
-            
-            // 尚未到職的日期不計入排班缺勤
             if (!isHired) continue; 
 
             const isPastOrToday = dateObj <= todayObj;
@@ -911,7 +1170,6 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
 
             if (isWorkDay && isPastOrToday) totalWorkDays++;
 
-            // 找出該員工在這一天的紀錄
             const dayEvents = monthEvents.filter(e => {
                const d = e.eventCategory === 'punch' ? new Date(e.timestamp) : new Date(e.date);
                return d.getDate() === day && e.userId === user.id;
@@ -951,7 +1209,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
                if (inEvent) {
                   const d = new Date(inEvent.timestamp);
                   inTime = d.toLocaleTimeString('zh-TW');
-                  const limit = new Date(d); limit.setHours(8, 30, 0, 0);
+                  const limit = new Date(d); limit.setHours(startH, startM, 0, 0); 
                   if (d > limit && !leaveEvent && !user.ignoreLate) {
                      lateMins = Math.floor((d - limit) / 60000);
                      totalLateMins += lateMins;
@@ -966,7 +1224,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
                if (outEvent) {
                   const d = new Date(outEvent.timestamp);
                   outTime = d.toLocaleTimeString('zh-TW');
-                  const limit = new Date(d); limit.setHours(17, 30, 0, 0);
+                  const limit = new Date(d); limit.setHours(endH, endM, 0, 0); 
                   if (d < limit && !leaveEvent) {
                      earlyMins = Math.floor((limit - d) / 60000);
                      totalEarlyMins += earlyMins;
@@ -975,7 +1233,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
                   }
                } else if (!leaveEvent && isPastOrToday) {
                   statusArr.push('缺下班卡');
-                  if(!inEvent) anomalyCount--; // 若全天無卡只算 1 次異常(曠職)
+                  if(!inEvent) anomalyCount--; 
                }
             }
 
@@ -988,10 +1246,9 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
                else statusArr.push(isPastOrToday ? '正常出勤' : '--');
             }
 
-            // 工作日、有請假、有打卡、有加班的紀錄才匯出至明細表
             if (isWorkDay || inEvent || outEvent || leaveEvent || dayOvertimeHours > 0) {
                detailRows.push([
-                  user.name, dateStr, weekdayStr, inTime || '--', outTime || '--',
+                  dept, title, user.name, dateStr, weekdayStr, inTime || '--', outTime || '--',
                   lateMins || '', earlyMins || '', leaveStr || '--', leaveHrs || '',
                   Number(finalOvertime).toFixed(1) === '0.0' ? '' : Number(finalOvertime).toFixed(1),
                   statusArr.join(' / ')
@@ -1000,7 +1257,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
          }
 
          summaryRows.push([
-            user.name, totalWorkDays, actualWorkDays, totalLateMins, totalEarlyMins,
+            dept, title, user.name, totalWorkDays, actualWorkDays, totalLateMins, totalEarlyMins,
             totalLeaveHours, Number(totalOvertimeHours).toFixed(1), anomalyCount
          ]);
       });
@@ -1010,7 +1267,6 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
       const wsSummary = window.XLSX.utils.aoa_to_sheet(summaryRows);
       const wsDetail = window.XLSX.utils.aoa_to_sheet(detailRows);
 
-      // 共用樣式處理
       const applyStyle = (ws) => {
          const range = window.XLSX.utils.decode_range(ws['!ref']);
          for (let R = range.s.r; R <= range.e.r; ++R) {
@@ -1034,23 +1290,18 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
       applyStyle(wsSummary);
       applyStyle(wsDetail);
 
-      // 設定欄寬
-      wsSummary['!cols'] = [{wch: 15}, {wch: 18}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 18}];
-      wsDetail['!cols'] = [{wch: 12}, {wch: 12}, {wch: 8}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 12}, {wch: 10}, {wch: 14}, {wch: 35}];
+      wsSummary['!cols'] = [{wch: 12}, {wch: 15}, {wch: 12}, {wch: 18}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 18}];
+      wsDetail['!cols'] = [{wch: 12}, {wch: 15}, {wch: 12}, {wch: 12}, {wch: 8}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 12}, {wch: 10}, {wch: 14}, {wch: 35}];
 
       window.XLSX.utils.book_append_sheet(wb, wsSummary, `${exYear}年${exMonth}月 總結算`);
       window.XLSX.utils.book_append_sheet(wb, wsDetail, `${exYear}年${exMonth}月 每日明細`);
 
-      // === 🚀 終極直接下載法 (Base64 Data URI) ===
-      // 完全捨棄 Blob 與視窗，直接將資料轉為 base64 連結強制瀏覽器下載
       const fileName = `出勤請假月報表_${exYear}年${exMonth}月.xlsx`;
       
       try {
-        // 首選：使用 SheetJS 內建最穩定的寫入方式
         window.XLSX.writeFile(wb, fileName);
         showToast('報表已成功下載！', 'success');
       } catch (err) {
-        // 備案：如果原生寫入被環境擋下，使用 Base64 A標籤 強制觸發
         const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
         const dataUri = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + wbout;
         
@@ -1070,6 +1321,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
   };
 
   const startEditRecord = (record) => {
+    if (readOnly) return;
     setEditingRecord(record);
     const d = new Date(record.timestamp);
     setEditDateTime(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`);
@@ -1084,7 +1336,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
   return (
     <div className="animate-fade-in w-full">
       
-      {editingRecord && (
+      {editingRecord && !readOnly && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><Edit2 className="w-5 h-5 mr-2 text-blue-600" />修改打卡時間</h3>
@@ -1094,7 +1346,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
         </div>
       )}
 
-      {recordToDelete && (
+      {recordToDelete && !readOnly && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
             <h3 className="text-lg font-bold text-red-600 mb-3 flex items-center"><AlertCircle className="w-5 h-5 mr-2" />確認刪除</h3>
@@ -1108,7 +1360,10 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
       )}
 
       <div className="flex flex-col sm:flex-row justify-between mb-4 sm:mb-6 gap-3 items-start sm:items-center">
-        <h2 className="text-xl font-bold text-gray-800 flex items-center"><List className="w-5 h-5 mr-2 text-blue-600" />明細查詢</h2>
+        <h2 className="text-xl font-bold text-gray-800 flex items-center">
+          <List className="w-5 h-5 mr-2 text-blue-600" />
+          {isManager ? '部門明細查詢' : '明細查詢'}
+        </h2>
         <div className="flex items-center gap-2 bg-emerald-50 p-1.5 rounded-lg border border-emerald-100">
           <span className="text-sm font-bold text-emerald-800 ml-1 hidden sm:inline">報表月份:</span>
           <input 
@@ -1118,7 +1373,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
             className="px-2 py-1.5 rounded border border-emerald-200 text-sm font-bold text-emerald-800 focus:ring-emerald-500 bg-white" 
           />
           <button onClick={handleExportExcel} className="px-4 py-1.5 rounded-md font-bold flex items-center shadow-sm active:scale-95 transition-all bg-emerald-600 text-white hover:bg-emerald-700">
-            <Download className="w-4 h-4 mr-2" />匯出月報表
+            <Download className="w-4 h-4 mr-2" />{isManager ? '匯出部門月報表' : '匯出月報表'}
           </button>
         </div>
       </div>
@@ -1126,7 +1381,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
       <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 sm:p-5 mb-6 flex flex-col lg:flex-row gap-4">
         <div className="flex-1 w-full"><label className="block text-sm font-bold text-gray-700 mb-1.5">日期區間</label><div className="flex items-center gap-1.5"><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-2 py-2 border rounded-lg text-sm bg-white" /><span className="text-gray-400 font-bold shrink-0">~</span><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} min={startDate} className="w-full px-2 py-2 border rounded-lg text-sm bg-white" /></div></div>
         <div className="flex gap-3 flex-1 w-full">
-          <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1.5">員工</label><select value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)} className="w-full px-2 py-2 border rounded-lg bg-white text-sm"><option value="">全部</option>{users.filter(u => u.role !== 'admin').map(u => <option key={u.docId} value={u.id}>{u.name}</option>)}</select></div>
+          <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1.5">員工</label><select value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)} className="w-full px-2 py-2 border rounded-lg bg-white text-sm"><option value="">全部</option>{users.filter(u => u.role !== 'admin' && u.role !== 'boss').map(u => <option key={u.docId} value={u.id}>{u.name}</option>)}</select></div>
           <div className="flex-1"><label className="block text-sm font-bold text-gray-700 mb-1.5">項目</label><select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full px-2 py-2 border rounded-lg bg-white text-sm"><option value="">全部</option><option value="punch_in">上班打卡</option><option value="punch_out">下班打卡</option><option value="leave_annual">請假 (年假)</option><option value="leave_comp">請假 (補休)</option><option value="leave_personal">請假 (事假)</option><option value="leave_sick">請假 (病假)</option><option value="overtime">核准加班</option></select></div>
         </div>
         <div className="flex items-end w-full lg:w-auto"><button onClick={() => { setStartDate(''); setEndDate(''); setFilterUserId(''); setFilterType(''); }} className="w-full px-4 py-2 text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-sm font-bold shadow-sm"><X className="w-4 h-4 inline mr-1" />清除</button></div>
@@ -1139,7 +1394,8 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
           <table className="w-full text-left bg-white min-w-[700px]">
             <thead>
               <tr className="bg-gray-100/80 text-gray-700 text-sm border-b">
-                <th className="p-3 font-bold">員工</th><th className="p-3 font-bold">項目</th><th className="p-3 font-bold">日期</th><th className="p-3 font-bold">時間 / 細節</th><th className="p-3 font-bold">狀態</th><th className="p-3 font-bold text-center w-20">操作</th>
+                <th className="p-3 font-bold">員工</th><th className="p-3 font-bold">項目</th><th className="p-3 font-bold">日期</th><th className="p-3 font-bold">時間 / 細節</th><th className="p-3 font-bold">狀態</th>
+                {!readOnly && <th className="p-3 font-bold text-center w-20">操作</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -1147,9 +1403,14 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
                 let dateDisp = r.eventCategory === 'punch' ? `${new Date(r.timestamp).toLocaleDateString('zh-TW')} ${getWeekdayStr(r.timestamp)}` : `${r.date.replace(/-/g,'/')} ${getWeekdayStr(r.date)}`;
                 let detailDisp = r.eventCategory === 'punch' ? new Date(r.timestamp).toLocaleTimeString('zh-TW') : (r.eventCategory === 'leave' ? `請假：${r.leaveType} ${r.hours || 8}H` : `核准加班：${r.hours}H`);
                 const status = getRecordStatusUI(r);
+                const userObj = users.find(u => u.id === r.userId);
+                
                 return (
                   <tr key={r.docId || idx} className="hover:bg-blue-50/50">
-                    <td className="p-3 font-bold text-gray-900">{r.userName}</td>
+                    <td className="p-3 font-bold text-gray-900 leading-tight">
+                       {r.userName}
+                       <div className="text-[10px] text-gray-500 font-normal mt-0.5">{userObj?.department || '未設定'} / {userObj?.jobTitle || '未設定'}</div>
+                    </td>
                     <td className="p-3">
                       {r.eventCategory === 'leave' ? <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">請假</span> : 
                        r.eventCategory === 'overtime' ? <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">加班單</span> : 
@@ -1164,10 +1425,12 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
                         <span className={`font-bold text-xs px-2 py-1 rounded-md ${status.type === 'holiday' ? 'bg-amber-100 text-amber-700' : 'bg-red-50 text-red-600'}`}>{status.text}</span>
                       ) : ( <span className="text-emerald-600 text-xs">{status.text}</span> )}
                     </td>
-                    <td className="p-3 text-center whitespace-nowrap">
-                      {r.eventCategory === 'punch' && <button onClick={() => startEditRecord(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 className="w-4 h-4 inline-block" /></button>}
-                      <button onClick={() => setRecordToDelete(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 ml-1"><Trash2 className="w-4 h-4 inline-block" /></button>
-                    </td>
+                    {!readOnly && (
+                      <td className="p-3 text-center whitespace-nowrap">
+                        {r.eventCategory === 'punch' && <button onClick={() => startEditRecord(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 className="w-4 h-4 inline-block" /></button>}
+                        <button onClick={() => setRecordToDelete(r)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 ml-1"><Trash2 className="w-4 h-4 inline-block" /></button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -1180,16 +1443,25 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
 }
 
 // --- 員工管理 ---
-function AdminUsersView({ users, leaves, overtimes, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, currentUser }) {
+function AdminUsersView({ users, leaves, overtimes, onAddUser, onEditUser, onDeleteUser, onUpdateUserIP, currentUser, departments, jobTitles, readOnly, isManager }) {
   const getTodayString = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   
   const [newUsername, setNewUsername] = useState(''); const [newPassword, setNewPassword] = useState(''); const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('employee'); const [newAllowedIP, setNewAllowedIP] = useState('');
   const [newEmail, setNewEmail] = useState(''); const [newAnnualLeave, setNewAnnualLeave] = useState(0);
   const [newHireDate, setNewHireDate] = useState(getTodayString());
+  const [newDepartment, setNewDepartment] = useState('');
+  const [newJobTitle, setNewJobTitle] = useState('');
   const [newIgnoreLate, setNewIgnoreLate] = useState(false); const [newIgnoreIpRestriction, setNewIgnoreIpRestriction] = useState(false);
   
   const [editingIpUserId, setEditingIpUserId] = useState(null); const [editIpValue, setEditIpValue] = useState(''); const [userToDelete, setUserToDelete] = useState(null);
-  const [editingUser, setEditingUser] = useState(null); const [editFormData, setEditFormData] = useState({ name: '', username: '', password: '', role: '', allowedIP: '', email: '', annualLeaveTotal: 0, hireDate: '', ignoreLate: false, ignoreIpRestriction: false, id: '' });
+  const [editingUser, setEditingUser] = useState(null); const [editFormData, setEditFormData] = useState({ name: '', username: '', password: '', role: '', allowedIP: '', email: '', annualLeaveTotal: 0, hireDate: '', department: '', jobTitle: '', ignoreLate: false, ignoreIpRestriction: false, id: '' });
+
+  const getRoleDisplayName = (role) => {
+    if (role === 'admin') return '管理員';
+    if (role === 'boss') return '老闆';
+    if (role === 'manager') return '部門主管';
+    return '一般員工';
+  };
 
   // 選擇到職日時，自動帶入勞基法特休天數
   const handleNewHireDateChange = (dateVal) => {
@@ -1202,53 +1474,78 @@ function AdminUsersView({ users, leaves, overtimes, onAddUser, onEditUser, onDel
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault(); if (!newUsername || !newPassword || !newName) return;
-    onAddUser({ username: newUsername, password: newPassword, name: newName, role: newRole, allowedIP: newAllowedIP.trim(), email: newEmail.trim(), annualLeaveTotal: Number(newAnnualLeave), hireDate: newHireDate, ignoreLate: newIgnoreLate, ignoreIpRestriction: newIgnoreIpRestriction });
-    setNewUsername(''); setNewPassword(''); setNewName(''); setNewRole('employee'); setNewAllowedIP(''); setNewEmail(''); setNewAnnualLeave(0); setNewHireDate(getTodayString()); setNewIgnoreLate(false); setNewIgnoreIpRestriction(false);
+    e.preventDefault(); if (readOnly || !newUsername || !newPassword || !newName) return;
+    onAddUser({ username: newUsername, password: newPassword, name: newName, role: newRole, allowedIP: newAllowedIP.trim(), email: newEmail.trim(), annualLeaveTotal: Number(newAnnualLeave), hireDate: newHireDate, department: newDepartment, jobTitle: newJobTitle, ignoreLate: newIgnoreLate, ignoreIpRestriction: newIgnoreIpRestriction });
+    setNewUsername(''); setNewPassword(''); setNewName(''); setNewRole('employee'); setNewAllowedIP(''); setNewEmail(''); setNewAnnualLeave(0); setNewHireDate(getTodayString()); setNewDepartment(''); setNewJobTitle(''); setNewIgnoreLate(false); setNewIgnoreIpRestriction(false);
   };
 
   const startFullEdit = (user) => {
+    if (readOnly) return;
     setEditingUser(user);
     setEditFormData({
       id: user.id, name: user.name, username: user.username, password: user.password, role: user.role, 
-      allowedIP: user.allowedIP || '', email: user.email || '', annualLeaveTotal: user.annualLeaveTotal || 0, hireDate: user.hireDate || '',
+      allowedIP: user.allowedIP || '', email: user.email || '', annualLeaveTotal: user.annualLeaveTotal || 0, 
+      hireDate: user.hireDate || '', department: user.department || '', jobTitle: user.jobTitle || '',
       ignoreLate: user.ignoreLate || false, ignoreIpRestriction: user.ignoreIpRestriction || false
     });
   };
 
-  const handleSaveEdit = () => { if (!editFormData.name || !editFormData.username || !editFormData.password) return; onEditUser(editingUser.docId, editFormData); setEditingUser(null); };
+  const handleSaveEdit = () => { if (readOnly || !editFormData.name || !editFormData.username || !editFormData.password) return; onEditUser(editingUser.docId, editFormData); setEditingUser(null); };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in relative">
-      {editingUser && (
+    <div className={`grid grid-cols-1 ${readOnly ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-6 animate-fade-in relative`}>
+      {editingUser && !readOnly && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-md animate-fade-in-down shadow-2xl"><h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 flex items-center"><Edit2 className="w-5 h-5 mr-2 text-blue-600" />編輯員工資料</h3>
-            <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto px-1">
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={editFormData.name} onChange={(e) => setEditFormData({...editFormData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-700 mb-1">Email 信箱</label><input type="email" value={editFormData.email} onChange={(e) => setEditFormData({...editFormData, email: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+          <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-lg animate-fade-in-down shadow-2xl"><h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 flex items-center"><Edit2 className="w-5 h-5 mr-2 text-blue-600" />編輯員工資料</h3>
+            <div className="grid grid-cols-2 gap-3 max-h-[65vh] overflow-y-auto px-1 pb-2">
+              <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={editFormData.name} onChange={(e) => setEditFormData({...editFormData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">Email 信箱</label><input type="email" value={editFormData.email} onChange={(e) => setEditFormData({...editFormData, email: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              
               <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">登入帳號</label><input type="text" required value={editFormData.username} onChange={(e) => setEditFormData({...editFormData, username: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
               <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">登入密碼</label><input type="text" required value={editFormData.password} onChange={(e) => setEditFormData({...editFormData, password: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              
+              <div className="col-span-1">
+                <label className="block text-xs font-bold text-purple-700 mb-1">所屬部門</label>
+                <select value={editFormData.department} onChange={(e) => setEditFormData({...editFormData, department: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 bg-purple-50">
+                  <option value="">無部門 / 未設定</option>
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="col-span-1">
+                <label className="block text-xs font-bold text-purple-700 mb-1">職位名稱</label>
+                <select value={editFormData.jobTitle} onChange={(e) => setEditFormData({...editFormData, jobTitle: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 bg-purple-50">
+                  <option value="">無職稱 / 未設定</option>
+                  {jobTitles.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
               <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">到職日</label><input type="date" value={editFormData.hireDate} onChange={(e) => handleEditHireDateChange(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-emerald-50" /></div>
               <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">年假總額(天)</label><input type="number" min="0" value={editFormData.annualLeaveTotal} onChange={(e) => setEditFormData({...editFormData, annualLeaveTotal: Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" /></div>
-              <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">權限</label><select value={editFormData.role} onChange={(e) => setEditFormData({...editFormData, role: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"><option value="employee">一般員工</option><option value="admin">管理員</option></select></div>
-              <div className="col-span-2"><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={editFormData.allowedIP} onChange={(e) => setEditFormData({...editFormData, allowedIP: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" placeholder="支援網段或單一IP" /></div>
+              
+              <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">系統權限</label><select value={editFormData.role} onChange={(e) => setEditFormData({...editFormData, role: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"><option value="employee">一般員工</option><option value="manager">部門主管</option><option value="boss">老闆</option><option value="admin">管理員</option></select></div>
+              <div className="col-span-1"><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={editFormData.allowedIP} onChange={(e) => setEditFormData({...editFormData, allowedIP: e.target.value})} className="w-full px-3 py-2 border rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" placeholder="支援網段或單一IP" /></div>
+              
               <div className="col-span-2 flex flex-wrap gap-4 mt-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
                 <label className="flex items-center text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={editFormData.ignoreLate} onChange={(e) => setEditFormData({...editFormData, ignoreLate: e.target.checked})} className="mr-1.5 focus:ring-blue-500" />不計遲到 (彈性上班)</label>
                 <label className="flex items-center text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={editFormData.ignoreIpRestriction} onChange={(e) => setEditFormData({...editFormData, ignoreIpRestriction: e.target.checked})} className="mr-1.5 focus:ring-blue-500" />無視 IP 限制</label>
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100"><button onClick={() => setEditingUser(null)} className="px-4 py-2 bg-gray-100 text-gray-600 font-bold rounded-lg text-sm">取消</button><button onClick={handleSaveEdit} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm">儲存修改</button></div>
+            <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100"><button onClick={() => setEditingUser(null)} className="px-4 py-2 bg-gray-100 text-gray-600 font-bold rounded-lg text-sm hover:bg-gray-200 transition-colors">取消</button><button onClick={handleSaveEdit} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm hover:bg-blue-700 shadow-md transition-all">儲存修改</button></div>
           </div>
         </div>
       )}
-      {userToDelete && (
+      {userToDelete && !readOnly && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm shadow-2xl"><h3 className="text-lg font-bold text-red-600 mb-3"><AlertCircle className="w-5 h-5 inline mr-2" />確認刪除</h3><p className="mb-5 text-sm">確定要刪除「{userToDelete.name}」嗎？</p><div className="flex justify-end gap-2"><button onClick={() => setUserToDelete(null)} className="px-4 py-2 bg-gray-100 font-bold text-gray-600 rounded-lg text-sm">取消</button><button onClick={() => { onDeleteUser(userToDelete.docId, userToDelete.id, userToDelete.name); setUserToDelete(null); }} className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg text-sm">確定刪除</button></div></div>
         </div>
       )}
 
-      <div className="lg:col-span-2">
-        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center"><Users className="w-5 h-5 mr-2 text-blue-600" />系統員工 ({users.length})</h2>
+      <div className={`lg:col-span-${readOnly ? '1' : '2'}`}>
+        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+          <Users className="w-5 h-5 mr-2 text-blue-600" />
+          {isManager ? `部門名單：${currentUser.department || '未設定部門'} ` : '系統全體員工 '} 
+          <span className="ml-1 text-sm font-normal text-gray-500">({users.length} 人)</span>
+        </h2>
         <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
           <ul className="divide-y divide-gray-100">
             {users.map(u => {
@@ -1259,10 +1556,14 @@ function AdminUsersView({ users, leaves, overtimes, onAddUser, onEditUser, onDel
               return (
                 <li key={u.docId} className="p-4 flex flex-col sm:flex-row justify-between gap-3 hover:bg-gray-50 transition-colors">
                   <div className="flex items-start sm:items-center gap-3 w-full">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 mt-1 sm:mt-0 ${u.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}>{u.name.charAt(0)}</div>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 mt-1 sm:mt-0 ${u.role === 'boss' ? 'bg-amber-500' : u.role === 'manager' ? 'bg-indigo-500' : u.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}>{u.name.charAt(0)}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-bold text-gray-900 text-base flex flex-wrap items-center gap-2"><span className="truncate">{u.name}</span>{u.id === currentUser.id && <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded-full shrink-0 text-gray-600">您自己</span>}</div>
-                      <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-2">
+                      <div className="font-bold text-gray-900 text-base flex flex-wrap items-center gap-2">
+                        <span className="truncate">{u.name}</span>
+                        <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-100">{u.department || '無部門'} / {u.jobTitle || '無職稱'}</span>
+                        {u.id === currentUser.id && <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded-full shrink-0 text-gray-600">您自己</span>}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2">
                         <span><span className="font-mono">@{u.username}</span></span>
                         {u.email && <span>| <Mail className="w-3 h-3 inline mr-1 -mt-0.5"/>{u.email}</span>}
                         {u.hireDate && <span className="text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">到職: {u.hireDate.replace(/-/g, '/')} ({formatTenure(u.hireDate)})</span>}
@@ -1274,19 +1575,23 @@ function AdminUsersView({ users, leaves, overtimes, onAddUser, onEditUser, onDel
                         {u.ignoreIpRestriction && <div className="bg-amber-50 text-amber-700 px-2 py-1 rounded-md font-bold border border-amber-100">無視IP</div>}
                         <div className="flex items-center bg-gray-100/80 px-2 py-1 rounded-md">
                           <Globe className="w-3.5 h-3.5 mr-1" /> IP限制: 
-                          {editingIpUserId === u.docId ? (
+                          {editingIpUserId === u.docId && !readOnly ? (
                             <div className="flex ml-2"><input type="text" value={editIpValue} onChange={(e) => setEditIpValue(e.target.value)} className="border rounded px-1 text-xs w-32 focus:outline-none focus:border-blue-500" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { onUpdateUserIP(u.docId, editIpValue.trim()); setEditingIpUserId(null); } if (e.key === 'Escape') setEditingIpUserId(null); }} /><button onClick={() => { onUpdateUserIP(u.docId, editIpValue.trim()); setEditingIpUserId(null); }} className="ml-1 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">儲存</button><button onClick={() => setEditingIpUserId(null)} className="ml-1 bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs font-bold">取消</button></div>
                           ) : (
-                            <div className="flex items-center ml-1">{u.allowedIP ? <span className="text-blue-600 font-mono font-bold truncate max-w-[120px]">{u.allowedIP}</span> : <span className="text-gray-400">無限制</span>}<button onClick={() => { setEditingIpUserId(u.docId); setEditIpValue(u.allowedIP || ''); }} className="ml-2 text-blue-500 hover:text-blue-700 p-0.5"><Edit2 className="w-3 h-3" /></button></div>
+                            <div className="flex items-center ml-1">{u.allowedIP ? <span className="text-blue-600 font-mono font-bold truncate max-w-[120px]">{u.allowedIP}</span> : <span className="text-gray-400">無限制</span>}{!readOnly && <button onClick={() => { setEditingIpUserId(u.docId); setEditIpValue(u.allowedIP || ''); }} className="ml-2 text-blue-500 hover:text-blue-700 p-0.5"><Edit2 className="w-3 h-3" /></button>}</div>
                           )}
                         </div>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-2 sm:pt-0 mt-2 sm:mt-0 border-t border-gray-100 sm:border-0">
-                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold mr-2 ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{u.role === 'admin' ? '管理員' : '一般員工'}</span>
-                    <button onClick={() => startFullEdit(u)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setUserToDelete({ docId: u.docId, id: u.id, name: u.name })} disabled={u.id === currentUser.id} className={`p-1.5 rounded-lg ${u.id === currentUser.id ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}><Trash2 className="w-4 h-4" /></button>
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold mr-2 ${u.role === 'boss' ? 'bg-amber-100 text-amber-700' : u.role === 'manager' ? 'bg-indigo-100 text-indigo-700' : u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>{getRoleDisplayName(u.role)}</span>
+                    {!readOnly && (
+                      <>
+                        <button onClick={() => startFullEdit(u)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50"><Edit2 className="w-4 h-4" /></button>
+                        <button onClick={() => setUserToDelete({ docId: u.docId, id: u.id, name: u.name })} disabled={u.id === currentUser.id || u.role === 'boss'} className={`p-1.5 rounded-lg ${u.id === currentUser.id || u.role === 'boss' ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}><Trash2 className="w-4 h-4" /></button>
+                      </>
+                    )}
                   </div>
                 </li>
               );
@@ -1294,30 +1599,53 @@ function AdminUsersView({ users, leaves, overtimes, onAddUser, onEditUser, onDel
           </ul>
         </div>
       </div>
-      <div className="w-full">
-        <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 lg:sticky lg:top-24 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><UserPlus className="w-5 h-5 mr-2 text-blue-600" />新增帳號</h2>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">Email 信箱 (寄信用)</label><input type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="arok276@gmail.com" /></div>
-            <div className="flex gap-2">
-               <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1">登入帳號</label><input type="text" required value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
-               <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1">登入密碼</label><input type="text" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
-            </div>
-            <div className="flex gap-2">
-               <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1 text-emerald-700">到職日 (自動算特休)</label><input type="date" required value={newHireDate} onChange={(e) => handleNewHireDateChange(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-emerald-50 focus:ring-2 focus:ring-emerald-500" /></div>
-               <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1">年假總額(天)</label><input type="number" min="0" required value={newAnnualLeave} onChange={(e) => setNewAnnualLeave(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" /></div>
-            </div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">權限</label><select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"><option value="employee">一般員工</option><option value="admin">管理員</option></select></div>
-            <div><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={newAllowedIP} onChange={(e) => setNewAllowedIP(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" /></div>
-            <div className="flex gap-4 mt-2">
-               <label className="flex items-center text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={newIgnoreLate} onChange={(e) => setNewIgnoreLate(e.target.checked)} className="mr-1.5 focus:ring-blue-500" />不計遲到</label>
-               <label className="flex items-center text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={newIgnoreIpRestriction} onChange={(e) => setNewIgnoreIpRestriction(e.target.checked)} className="mr-1.5 focus:ring-blue-500" />無視 IP</label>
-            </div>
-            <button type="submit" className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex justify-center text-sm shadow-md active:scale-95 transition-all">建立帳號</button>
-          </form>
+
+      {!readOnly && (
+        <div className="w-full">
+          <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 lg:sticky lg:top-24 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><UserPlus className="w-5 h-5 mr-2 text-blue-600" />新增帳號</h2>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">姓名</label><input type="text" required value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">Email 信箱 (寄信用)</label><input type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" placeholder="arok276@gmail.com" /></div>
+              
+              <div className="flex gap-2">
+                 <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1">登入帳號</label><input type="text" required value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+                 <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1">登入密碼</label><input type="text" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500" /></div>
+              </div>
+
+              <div className="flex gap-2">
+                 <div className="flex-1">
+                   <label className="block text-xs font-bold text-purple-700 mb-1">所屬部門</label>
+                   <select value={newDepartment} onChange={(e) => setNewDepartment(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 bg-purple-50">
+                     <option value="">無部門 / 未設定</option>
+                     {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                   </select>
+                 </div>
+                 <div className="flex-1">
+                   <label className="block text-xs font-bold text-purple-700 mb-1">職位名稱</label>
+                   <select value={newJobTitle} onChange={(e) => setNewJobTitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 bg-purple-50">
+                     <option value="">無職稱 / 未設定</option>
+                     {jobTitles.map(t => <option key={t} value={t}>{t}</option>)}
+                   </select>
+                 </div>
+              </div>
+
+              <div className="flex gap-2">
+                 <div className="flex-1"><label className="block text-xs font-bold text-emerald-700 mb-1">到職日 (自動算特休)</label><input type="date" required value={newHireDate} onChange={(e) => handleNewHireDateChange(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-emerald-50 focus:ring-2 focus:ring-emerald-500" /></div>
+                 <div className="flex-1"><label className="block text-xs font-bold text-gray-700 mb-1">年假總額(天)</label><input type="number" min="0" required value={newAnnualLeave} onChange={(e) => setNewAnnualLeave(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500" /></div>
+              </div>
+              
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">權限</label><select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"><option value="employee">一般員工</option><option value="manager">部門主管</option><option value="boss">老闆</option><option value="admin">管理員</option></select></div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">IP 限制 (選填)</label><input type="text" value={newAllowedIP} onChange={(e) => setNewAllowedIP(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" /></div>
+              <div className="flex gap-4 mt-2">
+                 <label className="flex items-center text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={newIgnoreLate} onChange={(e) => setNewIgnoreLate(e.target.checked)} className="mr-1.5 focus:ring-blue-500" />不計遲到</label>
+                 <label className="flex items-center text-xs font-bold text-gray-700 cursor-pointer"><input type="checkbox" checked={newIgnoreIpRestriction} onChange={(e) => setNewIgnoreIpRestriction(e.target.checked)} className="mr-1.5 focus:ring-blue-500" />無視 IP</label>
+              </div>
+              <button type="submit" className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex justify-center text-sm shadow-md active:scale-95 transition-all">建立帳號</button>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1333,19 +1661,24 @@ function AdminHolidaysView({ holidays, onAddHoliday, onDeleteHoliday, onImportTa
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
   const handleDateClick = (year, month, day) => {
-    if (readOnly) return; 
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const existing = holidays.find(h => h.date === dateStr);
+    
+    // 如果是唯讀模式(員工/老闆/主管)，只能點擊「已經存在的假期」來查看資訊
+    if (readOnly && !existing) return; 
+
     setSelectedDate({ date: dateStr, existing });
     setHolidayName(existing ? existing.name : '');
   };
 
   const handleSaveModal = () => {
+    if (readOnly) return;
     if (!selectedDate.existing && holidayName.trim()) onAddHoliday(selectedDate.date, holidayName.trim());
     setSelectedDate(null);
   };
 
   const handleImport = async () => {
+    if (readOnly) return;
     if (onImportTaiwanHolidays) {
       setIsImporting(true);
       await onImportTaiwanHolidays(currentYear);
@@ -1355,21 +1688,22 @@ function AdminHolidaysView({ holidays, onAddHoliday, onDeleteHoliday, onImportTa
 
   return (
     <div className="animate-fade-in relative">
-      {!readOnly && selectedDate && (
+      {selectedDate && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
-            <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center"><CalendarDays className="w-5 h-5 mr-2 text-amber-600" />{selectedDate.existing ? '編輯/移除 節日' : '設定為紀念日或節日'}</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center"><CalendarDays className="w-5 h-5 mr-2 text-amber-600" />{selectedDate.existing ? (readOnly ? '節日詳細資訊' : '編輯/移除 節日') : '設定為紀念日或節日'}</h3>
             <p className="text-sm text-gray-500 mb-4 font-mono bg-gray-50 p-2 rounded border border-gray-100 text-center">{selectedDate.date.replace(/-/g, ' / ')}</p>
             {selectedDate.existing ? (
-              <div className="mb-6 text-center"><p className="text-amber-700 font-bold text-xl mb-2 bg-amber-50 py-3 rounded-lg border border-amber-200">{selectedDate.existing.name}</p><p className="text-xs text-red-500 mt-3 font-bold">點擊下方按鈕以移除此節日，恢復為一般工作日</p></div>
+              <div className="mb-6 text-center"><p className="text-amber-700 font-bold text-xl mb-2 bg-amber-50 py-3 rounded-lg border border-amber-200">{selectedDate.existing.name}</p>{!readOnly && <p className="text-xs text-red-500 mt-3 font-bold">點擊下方按鈕以移除此節日，恢復為一般工作日</p>}</div>
             ) : (
-              <div className="mb-6"><label className="block text-xs font-bold text-gray-700 mb-1.5">請輸入節日或休假名稱</label><input type="text" value={holidayName} onChange={e => setHolidayName(e.target.value)} placeholder="例如：端午節、公司創立紀念日" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" autoFocus /></div>
+              !readOnly && <div className="mb-6"><label className="block text-xs font-bold text-gray-700 mb-1.5">請輸入節日或休假名稱</label><input type="text" value={holidayName} onChange={e => setHolidayName(e.target.value)} placeholder="例如：端午節、公司創立紀念日" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" autoFocus /></div>
             )}
             <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-              <button onClick={() => setSelectedDate(null)} className="px-4 py-2 bg-gray-100 text-gray-600 font-bold rounded-lg text-sm hover:bg-gray-200">取消</button>
-              {selectedDate.existing ? (
+              <button onClick={() => setSelectedDate(null)} className="px-4 py-2 bg-gray-100 text-gray-600 font-bold rounded-lg text-sm hover:bg-gray-200">{readOnly ? '關閉' : '取消'}</button>
+              {!readOnly && selectedDate.existing && (
                 <button onClick={() => { onDeleteHoliday(selectedDate.existing.docId); setSelectedDate(null); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-sm shadow-md">移除節日</button>
-              ) : (
+              )}
+              {!readOnly && !selectedDate.existing && (
                 <button onClick={handleSaveModal} className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-sm shadow-md">儲存設定</button>
               )}
             </div>
@@ -1378,7 +1712,7 @@ function AdminHolidaysView({ holidays, onAddHoliday, onDeleteHoliday, onImportTa
       )}
 
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm gap-4">
-        <div><h2 className="text-xl font-bold text-gray-800 flex items-center"><CalendarDays className="w-6 h-6 mr-2 text-amber-600" />紀念日及節日行事曆</h2><p className="text-xs text-gray-500 mt-1">{readOnly ? '此日曆標示出公司全年的國定紀念日與節日，供請假參考。' : '點擊日曆上的日期即可快速手動設定，或直接點擊右側自動匯入。'}</p></div>
+        <div><h2 className="text-xl font-bold text-gray-800 flex items-center"><CalendarDays className="w-6 h-6 mr-2 text-amber-600" />紀念日及節日行事曆</h2><p className="text-xs text-gray-500 mt-1">{readOnly ? '此日曆標示出公司全年的國定紀念日與節日，您可以點擊黃色標示的日期查看假期資訊。' : '點擊日曆上的日期即可快速手動設定，或直接點擊右側自動匯入。'}</p></div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
           <div className="flex items-center gap-1">
              <button onClick={() => setCurrentYear(y => y - 1)} className="p-2 hover:bg-white rounded-md transition-colors text-gray-600 hover:text-amber-600 shadow-sm"><ChevronLeft className="w-5 h-5" /></button>
@@ -1411,10 +1745,18 @@ function AdminHolidaysView({ holidays, onAddHoliday, onDeleteHoliday, onImportTa
                    const isWeekend = new Date(currentYear, month - 1, day).getDay() === 0 || new Date(currentYear, month - 1, day).getDay() === 6;
                    let bgClass = "bg-white border border-gray-100 text-gray-700";
                    if (!readOnly) bgClass += " hover:border-blue-300 hover:bg-blue-50";
-                   if (holiday) { bgClass = "bg-amber-100 text-amber-800 font-bold border border-amber-300 shadow-sm scale-[1.05]"; if (!readOnly) bgClass += " hover:bg-amber-200"; } 
-                   else if (isWeekend) { bgClass = "bg-gray-100 text-rose-500 border border-gray-100"; if (!readOnly) bgClass += " hover:bg-gray-200"; }
+                   
+                   if (holiday) { 
+                     bgClass = "bg-amber-100 text-amber-800 font-bold border border-amber-300 shadow-sm scale-[1.05] hover:bg-amber-200"; 
+                   } else if (isWeekend) { 
+                     bgClass = "bg-gray-100 text-rose-500 border border-gray-100"; 
+                     if (!readOnly) bgClass += " hover:bg-gray-200"; 
+                   }
+
+                   const isClickable = !readOnly || !!holiday;
+
                    return (
-                      <div key={day} onClick={() => handleDateClick(currentYear, month, day)} className={`py-1.5 rounded text-sm transition-all ${!readOnly ? 'cursor-pointer' : 'cursor-default'} ${bgClass}`} title={holiday ? holiday.name : (!readOnly ? '點擊設定為節日' : '')}>{day}</div>
+                      <div key={day} onClick={() => handleDateClick(currentYear, month, day)} className={`py-1.5 rounded text-sm transition-all ${isClickable ? 'cursor-pointer' : 'cursor-default'} ${bgClass}`} title={holiday ? holiday.name : (!readOnly ? '點擊設定為節日' : '')}>{day}</div>
                    )
                  })}
                </div>
