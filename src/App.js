@@ -259,9 +259,24 @@ export default function App() {
 
   const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
   
+  // 實作真實 Email 寄信與系統內部提示功能
   const sendMockEmail = (toEmail, subject, body) => {
+    // 1. 顯示系統內部的提醒
     setEmailNotification({ to: toEmail, subject, body });
     setTimeout(() => setEmailNotification(null), 6000); 
+    
+    // 2. 觸發作業系統預設的 Email 軟體 (如 Outlook, Apple Mail)
+    try {
+      const mailtoLink = `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const a = document.createElement('a');
+      a.href = mailtoLink;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.warn("無法啟動外部郵件軟體:", e);
+    }
   };
 
   const handleLogin = (username, password, rememberMe) => {
@@ -317,7 +332,7 @@ export default function App() {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'punch_leaves'), { id: Date.now().toString(), userId: currentUser.id, userName: currentUser.name, date: dateStr, leaveType, hours: hoursNum, status: 'pending', timestamp: new Date().toISOString() });
       showToast(`已成功送出 ${leaveType} (${hoursNum}H) 申請`, 'success');
       const adminUser = users.find(u => u.role === 'admin');
-      sendMockEmail(adminUser?.email || 'arok276@ct.org.tw', `[請假申請] 員工 ${currentUser.name} 申請 ${leaveType}`, `管理者 您好：\n\n員工 ${currentUser.name} 已提出請假申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 假別：${leaveType}\n▶ 時數：${hoursNum} 小時\n\n煩請登入系統簽核：\n${window.location.href}`);
+      sendMockEmail(adminUser?.email || 'arok276@ct.org.tw', `[系統通知] 員工 ${currentUser.name} 申請 ${leaveType}`, `管理者 您好：\n\n員工 ${currentUser.name} 已提出請假申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 假別：${leaveType}\n▶ 時數：${hoursNum} 小時\n\n煩請登入系統進行簽核：\n${window.location.href}`);
     } catch (err) { showToast('請假申請失敗！', 'error'); }
   };
 
@@ -330,7 +345,7 @@ export default function App() {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'punch_overtimes'), { id: Date.now().toString(), userId: currentUser.id, userName: currentUser.name, date: dateStr, hours: Number(hours), reason, status: 'pending', timestamp: new Date().toISOString() });
       showToast(`已成功送出加班申請`, 'success');
       const adminUser = users.find(u => u.role === 'admin');
-      sendMockEmail(adminUser?.email || 'arok276@ct.org.tw', `[加班申請] 員工 ${currentUser.name} 申請加班`, `管理者 您好：\n\n員工 ${currentUser.name} 已提出加班申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 時數：${hours} 小時\n▶ 事由：${reason}\n\n煩請登入系統簽核：\n${window.location.href}`);
+      sendMockEmail(adminUser?.email || 'arok276@ct.org.tw', `[系統通知] 員工 ${currentUser.name} 申請加班`, `管理者 您好：\n\n員工 ${currentUser.name} 已提出加班申請。\n\n▶ 日期：${dateStr} ${getWeekdayStr(dateStr)}\n▶ 時數：${hours} 小時\n▶ 事由：${reason}\n\n煩請登入系統進行簽核：\n${window.location.href}`);
     } catch (err) { showToast('加班申請失敗！', 'error'); }
   };
 
@@ -847,7 +862,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
     return { isAnomaly: false, text: '正常', type: 'normal' };
   };
 
-  // 🚀 Excel 專業版月結算報表
+  // 🚀 Excel 月結算報表 - 導入防護面板機制
   const handleExportExcel = () => {
     if (!window.XLSX) { showToast('Excel 套件載入中，請稍候再試！', 'error'); return; }
     if (!exportMonth) { showToast('請選擇要匯出的月份', 'error'); return; }
@@ -1023,11 +1038,30 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
       wsSummary['!cols'] = [{wch: 15}, {wch: 18}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 18}];
       wsDetail['!cols'] = [{wch: 12}, {wch: 12}, {wch: 8}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 12}, {wch: 10}, {wch: 14}, {wch: 35}];
 
-      window.XLSX.utils.book_append_sheet(wb, wsSummary, `${exMonth} 總結算`);
-      window.XLSX.utils.book_append_sheet(wb, wsDetail, `${exMonth} 每日明細`);
+      window.XLSX.utils.book_append_sheet(wb, wsSummary, `${exYear}年${exMonth}月 總結算`);
+      window.XLSX.utils.book_append_sheet(wb, wsDetail, `${exYear}年${exMonth}月 每日明細`);
 
-      window.XLSX.writeFile(wb, `出勤請假月報表_${exMonth}.xlsx`);
-      showToast('專業版 Excel 月報表匯出成功！', 'success');
+      // === 🚀 終極直接下載法 (Base64 Data URI) ===
+      // 完全捨棄 Blob 與視窗，直接將資料轉為 base64 連結強制瀏覽器下載
+      const fileName = `出勤請假月報表_${exYear}年${exMonth}月.xlsx`;
+      
+      try {
+        // 首選：使用 SheetJS 內建最穩定的寫入方式
+        window.XLSX.writeFile(wb, fileName);
+        showToast('報表已成功下載！', 'success');
+      } catch (err) {
+        // 備案：如果原生寫入被環境擋下，使用 Base64 A標籤 強制觸發
+        const wbout = window.XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+        const dataUri = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + wbout;
+        
+        const link = document.createElement('a');
+        link.href = dataUri;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('報表已成功下載！', 'success');
+      }
 
     } catch (e) {
       console.error(e);
@@ -1049,6 +1083,7 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
 
   return (
     <div className="animate-fade-in w-full">
+      
       {editingRecord && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] px-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-sm animate-fade-in-down shadow-2xl">
