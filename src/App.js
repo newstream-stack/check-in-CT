@@ -789,6 +789,8 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
   const [filterUserId, setFilterUserId] = useState('');
   const [filterType, setFilterType] = useState('');
   
+  const [exportMonth, setExportMonth] = useState(getTodayString().substring(0, 7));
+  
   const [editingRecord, setEditingRecord] = useState(null);
   const [editDateTime, setEditDateTime] = useState('');
   const [recordToDelete, setRecordToDelete] = useState(null);
@@ -845,128 +847,192 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
     return { isAnomaly: false, text: '正常', type: 'normal' };
   };
 
-  // 🚀 Excel 專業美化匯出
+  // 🚀 Excel 專業版月結算報表
   const handleExportExcel = () => {
-    if (filteredEvents.length === 0) return;
     if (!window.XLSX) { showToast('Excel 套件載入中，請稍候再試！', 'error'); return; }
+    if (!exportMonth) { showToast('請選擇要匯出的月份', 'error'); return; }
 
     try {
-      const wb = window.XLSX.utils.book_new();
-      const recordsByMonth = {};
-      
-      filteredEvents.forEach(e => {
-        let monthStr = e.eventCategory === 'punch' 
-           ? `${new Date(e.timestamp).getFullYear()}年${String(new Date(e.timestamp).getMonth() + 1).padStart(2, '0')}月`
-           : `${e.date.split('-')[0]}年${e.date.split('-')[1]}月`;
-        if (!recordsByMonth[monthStr]) recordsByMonth[monthStr] = [];
-        recordsByMonth[monthStr].push(e);
+      const [exYear, exMonth] = exportMonth.split('-');
+      const yearNum = parseInt(exYear, 10);
+      const monthNum = parseInt(exMonth, 10);
+      const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+      // 抓出當月所有的 events
+      const monthEvents = combinedEvents.filter(e => {
+         const d = e.eventCategory === 'punch' ? new Date(e.timestamp) : new Date(e.date);
+         return d.getFullYear() === yearNum && (d.getMonth() + 1) === monthNum;
       });
 
-      Object.keys(recordsByMonth).sort().forEach(monthStr => {
-        const monthEvents = recordsByMonth[monthStr];
-        const userDateMap = {};
-        
-        monthEvents.forEach(e => {
-          if (!userDateMap[e.userName]) userDateMap[e.userName] = {};
-          let dateStr = e.eventCategory === 'punch' 
-             ? `${new Date(e.timestamp).getFullYear()}/${String(new Date(e.timestamp).getMonth() + 1).padStart(2, '0')}/${String(new Date(e.timestamp).getDate()).padStart(2, '0')}`
-             : `${e.date.split('-')[0]}/${e.date.split('-')[1]}/${e.date.split('-')[2]}`;
-             
-          if (!userDateMap[e.userName][dateStr]) userDateMap[e.userName][dateStr] = { in: null, out: null, leave: null, leaveHours: 0, overtimeHours: 0, userId: e.userId };
-          
-          if (e.eventCategory === 'leave') {
-            userDateMap[e.userName][dateStr].leave = e.leaveType;
-            userDateMap[e.userName][dateStr].leaveHours = Number(e.hours) || 8;
-          }
-          else if (e.eventCategory === 'overtime') userDateMap[e.userName][dateStr].overtimeHours += Number(e.hours);
-          else if (e.type === 'in') { if (!userDateMap[e.userName][dateStr].in || new Date(e.timestamp) < new Date(userDateMap[e.userName][dateStr].in.timestamp)) userDateMap[e.userName][dateStr].in = e; }
-          else { if (!userDateMap[e.userName][dateStr].out || new Date(e.timestamp) > new Date(userDateMap[e.userName][dateStr].out.timestamp)) userDateMap[e.userName][dateStr].out = e; }
-        });
+      // 建立統計表與明細表架構
+      const summaryRows = [['員工姓名', '應出勤天數(至今日)', '實際出勤天數', '總遲到(分)', '總早退(分)', '總請假(小時)', '總加班(小時)', '異常/缺卡次數']];
+      const detailRows = [['員工姓名', '日期', '星期', '上班時間', '下班時間', '遲到(分)', '早退(分)', '請假(假別)', '請假(小時)', '核准加班(小時)', '狀態分析']];
 
-        const rows = [];
-        rows.push(['員工姓名', '日期', '星期', '上班時間', '下班時間', '遲到時間', '早退時間', '請假(假別)', '請假(小時)', '總加班(小時)', '綜合狀態分析']);
+      // 找出需要統計的員工 (包含當月有紀錄，或是非管理員的一般員工)
+      const activeUsers = users.filter(u => u.role !== 'admin' || monthEvents.some(e => e.userId === u.id));
 
-        Object.keys(userDateMap).sort().forEach(userName => {
-          const dates = userDateMap[userName];
-          Object.keys(dates).sort((a,b) => new Date(a) - new Date(b)).forEach(dateStr => {
-            const data = dates[dateStr];
-            let inTime = '', outTime = '', lateMins = 0, earlyMins = 0, finalOvertimeHours = 0, leaveStr = '';
-            let statusArr = [];
+      const todayObj = new Date();
+      todayObj.setHours(23, 59, 59, 999);
 
-            // 確保 dateStr 格式可被 new Date 正確解析 (YYYY/MM/DD)
-            let actualDateObj = new Date(dateStr); 
-            const holidayInfo = checkIsHoliday(actualDateObj, holidays);
-            const weekdayStr = getWeekdayStr(dateStr).replace(/[()]/g, '');
-            const userObj = users.find(u => u.id === data.userId);
-            const isIgnoreLate = userObj?.ignoreLate || false;
+      activeUsers.forEach(user => {
+         let totalWorkDays = 0, actualWorkDays = 0, totalLateMins = 0, totalEarlyMins = 0;
+         let totalLeaveHours = 0, totalOvertimeHours = 0, anomalyCount = 0;
 
-            if (data.leave) {
-              leaveStr = data.leave; 
-              statusArr.push(`請假 (${data.leave} ${data.leaveHours}H)`);
-            }
+         const hireDateObj = user.hireDate ? new Date(user.hireDate) : new Date('2000-01-01');
+         hireDateObj.setHours(0, 0, 0, 0);
+
+         for (let day = 1; day <= daysInMonth; day++) {
+            const dateObj = new Date(yearNum, monthNum - 1, day);
+            const isHired = dateObj >= hireDateObj;
             
+            // 尚未到職的日期不計入排班缺勤
+            if (!isHired) continue; 
+
+            const isPastOrToday = dateObj <= todayObj;
+            const dateStr = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const weekdayStr = getWeekdayStr(dateStr).replace(/[()]/g, '');
+            const holidayInfo = checkIsHoliday(dateObj, holidays);
+            const isWorkDay = !holidayInfo.isOff;
+
+            if (isWorkDay && isPastOrToday) totalWorkDays++;
+
+            // 找出該員工在這一天的紀錄
+            const dayEvents = monthEvents.filter(e => {
+               const d = e.eventCategory === 'punch' ? new Date(e.timestamp) : new Date(e.date);
+               return d.getDate() === day && e.userId === user.id;
+            });
+
+            let inEvent = null, outEvent = null, leaveEvent = null, dayOvertimeHours = 0;
+
+            dayEvents.forEach(e => {
+               if (e.eventCategory === 'leave' && e.status === 'approved') leaveEvent = e;
+               else if (e.eventCategory === 'overtime' && e.status === 'approved') dayOvertimeHours += Number(e.hours);
+               else if (e.type === 'in') { if (!inEvent || new Date(e.timestamp) < new Date(inEvent.timestamp)) inEvent = e; }
+               else if (e.type === 'out') { if (!outEvent || new Date(e.timestamp) > new Date(outEvent.timestamp)) outEvent = e; }
+            });
+
+            let inTime = '', outTime = '', lateMins = 0, earlyMins = 0, statusArr = [];
+            let leaveStr = '', leaveHrs = 0;
+
+            if (leaveEvent) {
+               leaveStr = leaveEvent.leaveType;
+               leaveHrs = Number(leaveEvent.hours) || 8;
+               totalLeaveHours += leaveHrs;
+               statusArr.push(`請假(${leaveStr} ${leaveHrs}H)`);
+            }
+
             let holidayPunchHours = 0;
-            if (holidayInfo.isOff) {
-               if (data.in && data.out) holidayPunchHours = (new Date(data.out.timestamp) - new Date(data.in.timestamp)) / 3600000;
-               if (data.in) inTime = new Date(data.in.timestamp).toLocaleTimeString('zh-TW');
-               if (data.out) outTime = new Date(data.out.timestamp).toLocaleTimeString('zh-TW');
+            if (!isWorkDay) {
+               if (inEvent && outEvent) holidayPunchHours = (new Date(outEvent.timestamp) - new Date(inEvent.timestamp)) / 3600000;
+               if (inEvent) inTime = new Date(inEvent.timestamp).toLocaleTimeString('zh-TW');
+               if (outEvent) outTime = new Date(outEvent.timestamp).toLocaleTimeString('zh-TW');
+               if (holidayPunchHours > 0) {
+                 statusArr.push(`假日打卡`);
+                 if (isPastOrToday) actualWorkDays++;
+               }
             } else {
-               if (data.in) {
-                 const d = new Date(data.in.timestamp); inTime = d.toLocaleTimeString('zh-TW');
-                 const limit = new Date(d); limit.setHours(8, 30, 0, 0);
-                 if (d > limit && !data.leave && !isIgnoreLate) { lateMins = Math.floor((d - limit) / 60000); statusArr.push(`遲到 ${formatMins(lateMins)}`); }
-               } else if (!data.leave) { statusArr.push('缺上班卡'); }
+               if ((inEvent || outEvent) && isPastOrToday) actualWorkDays++;
 
-               if (data.out) {
-                 const d = new Date(data.out.timestamp); outTime = d.toLocaleTimeString('zh-TW');
-                 const limit = new Date(d); limit.setHours(17, 30, 0, 0);
-                 if (d < limit && !data.leave) { earlyMins = Math.floor((limit - d) / 60000); statusArr.push(`早退 ${formatMins(earlyMins)}`); }
-               } else if (!data.leave) { statusArr.push('缺下班卡'); }
+               if (inEvent) {
+                  const d = new Date(inEvent.timestamp);
+                  inTime = d.toLocaleTimeString('zh-TW');
+                  const limit = new Date(d); limit.setHours(8, 30, 0, 0);
+                  if (d > limit && !leaveEvent && !user.ignoreLate) {
+                     lateMins = Math.floor((d - limit) / 60000);
+                     totalLateMins += lateMins;
+                     statusArr.push(`遲到 ${formatMins(lateMins)}`);
+                     anomalyCount++;
+                  }
+               } else if (!leaveEvent && isPastOrToday) {
+                  statusArr.push('缺上班卡');
+                  anomalyCount++;
+               }
+
+               if (outEvent) {
+                  const d = new Date(outEvent.timestamp);
+                  outTime = d.toLocaleTimeString('zh-TW');
+                  const limit = new Date(d); limit.setHours(17, 30, 0, 0);
+                  if (d < limit && !leaveEvent) {
+                     earlyMins = Math.floor((limit - d) / 60000);
+                     totalEarlyMins += earlyMins;
+                     statusArr.push(`早退 ${formatMins(earlyMins)}`);
+                     anomalyCount++;
+                  }
+               } else if (!leaveEvent && isPastOrToday) {
+                  statusArr.push('缺下班卡');
+                  if(!inEvent) anomalyCount--; // 若全天無卡只算 1 次異常(曠職)
+               }
             }
 
-            // 計算最終加班：假日打卡時數 + 手動加班單，單日上限 8 小時
-            finalOvertimeHours = Math.min(8, holidayPunchHours + data.overtimeHours);
-            if (holidayInfo.isOff && holidayPunchHours > 0) statusArr.push(`假日打卡 (${holidayInfo.name})`);
-            if (data.overtimeHours > 0) statusArr.push(`核准加班 ${data.overtimeHours}H`);
+            const finalOvertime = Math.min(8, holidayPunchHours + dayOvertimeHours);
+            totalOvertimeHours += finalOvertime;
+            if (dayOvertimeHours > 0) statusArr.push(`核准加班 ${dayOvertimeHours}H`);
 
-            if (statusArr.length === 0) statusArr.push('正常出勤');
-
-            rows.push([ userName, dateStr, weekdayStr, inTime || '--', outTime || '--', formatMins(lateMins), formatMins(earlyMins), leaveStr || '--', data.leaveHours || 0, Number(finalOvertimeHours).toFixed(1), statusArr.join(' / ') ]);
-          });
-        });
-
-        const ws = window.XLSX.utils.aoa_to_sheet(rows);
-        
-        // 💎 專業美化
-        const range = window.XLSX.utils.decode_range(ws['!ref']);
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-          for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cellRef = window.XLSX.utils.encode_cell({r: R, c: C});
-            if (!ws[cellRef]) continue;
-            if (R === 0) {
-              ws[cellRef].s = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "4F81BD" } }, alignment: { horizontal: "center", vertical: "center" }, border: { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} } };
-            } else {
-              ws[cellRef].s = { alignment: { horizontal: "center", vertical: "center" } };
-              if (ws[cellRef].v && typeof ws[cellRef].v === 'string') {
-                 if (ws[cellRef].v.includes('遲到') || ws[cellRef].v.includes('早退') || ws[cellRef].v.includes('缺')) ws[cellRef].s.font = { color: { rgb: "C00000" }, bold: true }; 
-                 else if (ws[cellRef].v.includes('請假')) ws[cellRef].s.font = { color: { rgb: "7030A0" }, bold: true }; 
-                 else if (ws[cellRef].v.includes('加班')) ws[cellRef].s.font = { color: { rgb: "E36C09" }, bold: true }; 
-              }
+            if (statusArr.length === 0) {
+               if (!isWorkDay) statusArr.push(holidayInfo.name);
+               else statusArr.push(isPastOrToday ? '正常出勤' : '--');
             }
-          }
-        }
-        ws['!cols'] = [{wch: 12}, {wch: 12}, {wch: 8}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 12}, {wch: 35}];
-        window.XLSX.utils.book_append_sheet(wb, ws, monthStr);
+
+            // 工作日、有請假、有打卡、有加班的紀錄才匯出至明細表
+            if (isWorkDay || inEvent || outEvent || leaveEvent || dayOvertimeHours > 0) {
+               detailRows.push([
+                  user.name, dateStr, weekdayStr, inTime || '--', outTime || '--',
+                  lateMins || '', earlyMins || '', leaveStr || '--', leaveHrs || '',
+                  Number(finalOvertime).toFixed(1) === '0.0' ? '' : Number(finalOvertime).toFixed(1),
+                  statusArr.join(' / ')
+               ]);
+            }
+         }
+
+         summaryRows.push([
+            user.name, totalWorkDays, actualWorkDays, totalLateMins, totalEarlyMins,
+            totalLeaveHours, Number(totalOvertimeHours).toFixed(1), anomalyCount
+         ]);
       });
 
-      let dateStr = '全部';
-      if(startDate && endDate) dateStr = `${startDate.replace(/-/g, '')}-${endDate.replace(/-/g, '')}`;
-      else if(startDate) dateStr = `${startDate.replace(/-/g, '')}起`;
-      else if(endDate) dateStr = `至${endDate.replace(/-/g, '')}`;
+      const wb = window.XLSX.utils.book_new();
+      
+      const wsSummary = window.XLSX.utils.aoa_to_sheet(summaryRows);
+      const wsDetail = window.XLSX.utils.aoa_to_sheet(detailRows);
 
-      window.XLSX.writeFile(wb, `出勤請假報表_${dateStr}.xlsx`);
-      showToast('專業版 Excel 報表匯出成功！', 'success');
-    } catch (e) { console.error(e); showToast('報表匯出失敗', 'error'); }
+      // 共用樣式處理
+      const applyStyle = (ws) => {
+         const range = window.XLSX.utils.decode_range(ws['!ref']);
+         for (let R = range.s.r; R <= range.e.r; ++R) {
+           for (let C = range.s.c; C <= range.e.c; ++C) {
+             const cellRef = window.XLSX.utils.encode_cell({r: R, c: C});
+             if (!ws[cellRef]) continue;
+             if (R === 0) {
+               ws[cellRef].s = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "4F81BD" } }, alignment: { horizontal: "center", vertical: "center" }, border: { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} } };
+             } else {
+               ws[cellRef].s = { alignment: { horizontal: "center", vertical: "center" } };
+               if (ws[cellRef].v && typeof ws[cellRef].v === 'string') {
+                  if (ws[cellRef].v.includes('遲到') || ws[cellRef].v.includes('早退') || ws[cellRef].v.includes('缺')) ws[cellRef].s.font = { color: { rgb: "C00000" }, bold: true }; 
+                  else if (ws[cellRef].v.includes('請假')) ws[cellRef].s.font = { color: { rgb: "7030A0" }, bold: true }; 
+                  else if (ws[cellRef].v.includes('加班')) ws[cellRef].s.font = { color: { rgb: "E36C09" }, bold: true }; 
+               }
+             }
+           }
+         }
+      };
+
+      applyStyle(wsSummary);
+      applyStyle(wsDetail);
+
+      // 設定欄寬
+      wsSummary['!cols'] = [{wch: 15}, {wch: 18}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 18}];
+      wsDetail['!cols'] = [{wch: 12}, {wch: 12}, {wch: 8}, {wch: 12}, {wch: 12}, {wch: 10}, {wch: 10}, {wch: 12}, {wch: 10}, {wch: 14}, {wch: 35}];
+
+      window.XLSX.utils.book_append_sheet(wb, wsSummary, `${exMonth} 總結算`);
+      window.XLSX.utils.book_append_sheet(wb, wsDetail, `${exMonth} 每日明細`);
+
+      window.XLSX.writeFile(wb, `出勤請假月報表_${exMonth}.xlsx`);
+      showToast('專業版 Excel 月報表匯出成功！', 'success');
+
+    } catch (e) {
+      console.error(e);
+      showToast('報表匯出發生錯誤，請重試', 'error');
+    }
   };
 
   const startEditRecord = (record) => {
@@ -1006,9 +1072,20 @@ function AdminRecordsView({ records, leaves, overtimes, users, holidays, showToa
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between mb-4 sm:mb-6 gap-3">
+      <div className="flex flex-col sm:flex-row justify-between mb-4 sm:mb-6 gap-3 items-start sm:items-center">
         <h2 className="text-xl font-bold text-gray-800 flex items-center"><List className="w-5 h-5 mr-2 text-blue-600" />明細查詢</h2>
-        <button onClick={handleExportExcel} disabled={filteredEvents.length === 0} className={`px-4 py-2.5 rounded-lg font-bold flex items-center shadow-sm active:scale-95 transition-all ${filteredEvents.length === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}><Download className="w-4 h-4 mr-2" />匯出報表</button>
+        <div className="flex items-center gap-2 bg-emerald-50 p-1.5 rounded-lg border border-emerald-100">
+          <span className="text-sm font-bold text-emerald-800 ml-1 hidden sm:inline">報表月份:</span>
+          <input 
+            type="month" 
+            value={exportMonth} 
+            onChange={e => setExportMonth(e.target.value)} 
+            className="px-2 py-1.5 rounded border border-emerald-200 text-sm font-bold text-emerald-800 focus:ring-emerald-500 bg-white" 
+          />
+          <button onClick={handleExportExcel} className="px-4 py-1.5 rounded-md font-bold flex items-center shadow-sm active:scale-95 transition-all bg-emerald-600 text-white hover:bg-emerald-700">
+            <Download className="w-4 h-4 mr-2" />匯出月報表
+          </button>
+        </div>
       </div>
 
       <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 sm:p-5 mb-6 flex flex-col lg:flex-row gap-4">
