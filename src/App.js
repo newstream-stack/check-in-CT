@@ -302,7 +302,17 @@ export default function App() {
       }
       setCurrentUser(user);
       if (['admin', 'boss', 'manager'].includes(user.role)) setAdminView('records');
-      try { if (rememberMe) localStorage.setItem('punchSystemCredentials', JSON.stringify({ username, password })); else localStorage.removeItem('punchSystemCredentials'); } catch (error) {}
+      try { 
+        if (rememberMe) { 
+          localStorage.setItem('punchSystemCredentials', JSON.stringify({ username, password })); 
+          document.cookie = `punchUser=${encodeURIComponent(username)}; max-age=31536000; path=/`;
+          document.cookie = `punchPass=${encodeURIComponent(password)}; max-age=31536000; path=/`;
+        } else { 
+          localStorage.removeItem('punchSystemCredentials'); 
+          document.cookie = 'punchUser=; max-age=0; path=/';
+          document.cookie = 'punchPass=; max-age=0; path=/';
+        } 
+      } catch (error) {}
       showToast(`歡迎回來，${user.name}！`, 'success');
     } else { showToast('帳號或密碼錯誤！', 'error'); }
   };
@@ -514,16 +524,30 @@ function LoginScreen({ onLogin, toast, clientIp, systemName = '戰地記憶的�
 
   useEffect(() => { 
     try { 
+      let savedUser = null;
+      let savedPass = null;
+      
       const saved = localStorage.getItem('punchSystemCredentials'); 
       if (saved) { 
-        const { username, password } = JSON.parse(saved); 
-        setUsername(username); 
-        setPassword(password); 
+        const parsed = JSON.parse(saved); 
+        savedUser = parsed.username;
+        savedPass = parsed.password;
+      } else {
+        const cookies = document.cookie.split(';');
+        cookies.forEach(c => {
+          if (c.trim().startsWith('punchUser=')) savedUser = decodeURIComponent(c.split('=')[1]);
+          if (c.trim().startsWith('punchPass=')) savedPass = decodeURIComponent(c.split('=')[1]);
+        });
+      }
+
+      if (savedUser && savedPass) { 
+        setUsername(savedUser); 
+        setPassword(savedPass); 
         setRememberMe(true); 
         setIsAutoLoggingIn(true);
         // 自動嘗試登入，解決手機版桌面捷徑每次都要重新登入的問題
         setTimeout(() => {
-          onLogin(username, password, true);
+          onLogin(savedUser, savedPass, true);
           setIsAutoLoggingIn(false);
         }, 100);
       } 
