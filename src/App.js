@@ -540,10 +540,24 @@ function LoginScreen({ onLogin, toast, clientIp, systemName = '戰地記憶的�
         <div className="p-6 sm:p-8">
           {toast && <div className={`mb-6 p-3 sm:p-4 rounded-lg flex items-center text-sm ${toast.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}><AlertCircle className="w-5 h-5 mr-2" /> {toast.message}</div>}
           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
-            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">帳號</label><div className="relative"><Users className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" /><input type="text" className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="輸入登入帳號" value={username} onChange={(e) => setUsername(e.target.value)} /></div></div>
-            <div><label className="block text-sm font-bold text-gray-700 mb-1.5">密碼</label><div className="relative"><LogIn className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" /><input type="password" className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="輸入密碼" value={password} onChange={(e) => setPassword(e.target.value)} /></div></div>
-            <div className="flex items-center"><input id="remember-me" type="checkbox" className="h-4 w-4 text-blue-600 rounded cursor-pointer" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} /><label htmlFor="remember-me" className="ml-2 text-sm text-gray-700 cursor-pointer">記住帳號與密碼</label></div>
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md active:scale-95 text-lg">登入系統</button>
+            <div>
+              <label htmlFor="username" className="block text-sm font-bold text-gray-700 mb-1.5">帳號</label>
+              <div className="relative">
+                <Users className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
+                <input id="username" name="username" type="text" autoComplete="username" className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="輸入登入帳號" value={username} onChange={(e) => setUsername(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-bold text-gray-700 mb-1.5">密碼</label>
+              <div className="relative">
+                <LogIn className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" />
+                <input id="password" name="password" type="password" autoComplete="current-password" className="w-full pl-10 pr-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="輸入密碼" value={password} onChange={(e) => setPassword(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex items-center"><input id="remember-me" name="rememberMe" type="checkbox" className="h-4 w-4 text-blue-600 rounded cursor-pointer" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} /><label htmlFor="remember-me" className="ml-2 text-sm text-gray-700 cursor-pointer">記住帳號與密碼 (自動登入)</label></div>
+            <button type="submit" disabled={isAutoLoggingIn} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-3 px-4 rounded-lg shadow-md active:scale-95 text-lg transition-colors">
+              {isAutoLoggingIn ? '自動登入中...' : '登入系統'}
+            </button>
           </form>
           <div className="mt-6 flex justify-center items-center text-xs text-gray-400 bg-gray-50 py-2 px-2 rounded-lg border"><Globe className="w-3.5 h-3.5 mr-1.5" />目前網路 IP：<span className="font-mono text-gray-600 ml-1">{clientIp}</span></div>
         </div>
