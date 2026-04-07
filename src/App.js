@@ -510,7 +510,27 @@ export default function App() {
 // ==========================================
 function LoginScreen({ onLogin, toast, clientIp, systemName = '戰地記憶的燈塔：金門莒光樓' }) {
   const [username, setUsername] = useState(''); const [password, setPassword] = useState(''); const [rememberMe, setRememberMe] = useState(false);
-  useEffect(() => { try { const saved = localStorage.getItem('punchSystemCredentials'); if (saved) { const { username, password } = JSON.parse(saved); setUsername(username); setPassword(password); setRememberMe(true); } } catch (e) {} }, []);
+  const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
+
+  useEffect(() => { 
+    try { 
+      const saved = localStorage.getItem('punchSystemCredentials'); 
+      if (saved) { 
+        const { username, password } = JSON.parse(saved); 
+        setUsername(username); 
+        setPassword(password); 
+        setRememberMe(true); 
+        setIsAutoLoggingIn(true);
+        // 自動嘗試登入，解決手機版桌面捷徑每次都要重新登入的問題
+        setTimeout(() => {
+          onLogin(username, password, true);
+          setIsAutoLoggingIn(false);
+        }, 100);
+      } 
+    } catch (e) {} 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSubmit = (e) => { e.preventDefault(); if (!username || !password) return; onLogin(username, password, rememberMe); };
 
   return (
