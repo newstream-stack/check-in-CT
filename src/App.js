@@ -305,19 +305,28 @@ export default function App() {
       try { 
         if (rememberMe) { 
           localStorage.setItem('punchSystemCredentials', JSON.stringify({ username, password })); 
-          document.cookie = `punchUser=${encodeURIComponent(username)}; max-age=31536000; path=/`;
-          document.cookie = `punchPass=${encodeURIComponent(password)}; max-age=31536000; path=/`;
+          const expires = new Date(Date.now() + 31536000 * 1000).toUTCString();
+          document.cookie = `punchUser=${encodeURIComponent(username)}; max-age=31536000; expires=${expires}; path=/`;
+          document.cookie = `punchPass=${encodeURIComponent(password)}; max-age=31536000; expires=${expires}; path=/`;
         } else { 
           localStorage.removeItem('punchSystemCredentials'); 
-          document.cookie = 'punchUser=; max-age=0; path=/';
-          document.cookie = 'punchPass=; max-age=0; path=/';
+          document.cookie = 'punchUser=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+          document.cookie = 'punchPass=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
         } 
       } catch (error) {}
       showToast(`歡迎回來，${user.name}！`, 'success');
     } else { showToast('帳號或密碼錯誤！', 'error'); }
   };
 
-  const handleLogout = () => { setCurrentUser(null); showToast('已成功登出。', 'success'); };
+  const handleLogout = () => { 
+    try {
+      localStorage.removeItem('punchSystemCredentials'); 
+      document.cookie = 'punchUser=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      document.cookie = 'punchPass=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    } catch(e) {}
+    setCurrentUser(null); 
+    showToast('已成功登出。', 'success'); 
+  };
 
   // --- 員工操作 (打卡/請假/加班) ---
   const handlePunch = async (type) => {
@@ -519,7 +528,7 @@ export default function App() {
 // 登入畫面
 // ==========================================
 function LoginScreen({ onLogin, toast, clientIp, systemName = '戰地記憶的燈塔：金門莒光樓' }) {
-  const [username, setUsername] = useState(''); const [password, setPassword] = useState(''); const [rememberMe, setRememberMe] = useState(false);
+  const [username, setUsername] = useState(''); const [password, setPassword] = useState(''); const [rememberMe, setRememberMe] = useState(true);
   const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
 
   useEffect(() => { 
